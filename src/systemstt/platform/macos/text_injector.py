@@ -1,0 +1,185 @@
+"""
+MacOSTextInjector — macOS Accessibility-based text injection.
+
+Uses CGEvent APIs via PyObjC to inject text into the focused application
+at the cursor position. Supports Unicode text (including Hebrew/RTL) and
+keystroke simulation with modifier keys.
+"""
+
+from __future__ import annotations
+
+import logging
+from typing import Sequence
+
+from systemstt.errors import AccessibilityPermissionError, InjectionFailedError
+from systemstt.platform.base import KeyModifier, SpecialKey, TextInjector
+
+logger = logging.getLogger(__name__)
+
+# Import macOS APIs - these are mocked in tests
+try:
+    from Quartz import (  # type: ignore[import-untyped]
+        CGEventPost,
+        CGEventCreateKeyboardEvent,
+        CGEventKeyboardSetUnicodeString,
+        CGEventSetFlags,
+        kCGHIDEventTap,
+        kCGEventKeyDown,
+        kCGEventKeyUp,
+        kCGEventFlagMaskCommand,
+        kCGEventFlagMaskAlternate,
+        kCGEventFlagMaskShift,
+        kCGEventFlagMaskControl,
+    )
+    from ApplicationServices import (  # type: ignore[import-untyped]
+        AXIsProcessTrusted,
+        AXIsProcessTrustedWithOptions,
+    )
+except ImportError:
+    # Allow importing on non-macOS for testing with mocks
+    CGEventPost = None  # type: ignore[assignment]
+    CGEventCreateKeyboardEvent = None  # type: ignore[assignment]
+    CGEventKeyboardSetUnicodeString = None  # type: ignore[assignment]
+    CGEventSetFlags = None  # type: ignore[assignment]
+    AXIsProcessTrusted = None  # type: ignore[assignment]
+    AXIsProcessTrustedWithOptions = None  # type: ignore[assignment]
+    kCGHIDEventTap = 0
+    kCGEventKeyDown = 10
+    kCGEventKeyUp = 11
+    kCGEventFlagMaskCommand = 1 << 20
+    kCGEventFlagMaskAlternate = 1 << 19
+    kCGEventFlagMaskShift = 1 << 17
+    kCGEventFlagMaskControl = 1 << 18
+
+# Virtual key codes for special keys
+_SPECIAL_KEY_CODES: dict[str, int] = {
+    "return": 0x24,
+    "backspace": 0x33,
+    "delete": 0x75,
+    "tab": 0x30,
+    "escape": 0x35,
+    "left": 0x7B,
+    "right": 0x7C,
+    "up": 0x7E,
+    "down": 0x7D,
+    "home": 0x73,
+    "end": 0x77,
+}
+
+# Virtual key codes for letter keys
+_LETTER_KEY_CODES: dict[str, int] = {
+    "a": 0x00, "b": 0x0B, "c": 0x08, "d": 0x02, "e": 0x0E,
+    "f": 0x03, "g": 0x05, "h": 0x04, "i": 0x22, "j": 0x26,
+    "k": 0x28, "l": 0x25, "m": 0x2E, "n": 0x2D, "o": 0x1F,
+    "p": 0x23, "q": 0x0C, "r": 0x0F, "s": 0x01, "t": 0x11,
+    "u": 0x20, "v": 0x09, "w": 0x0D, "x": 0x07, "y": 0x10,
+    "z": 0x06,
+}
+
+# Modifier flag mapping
+_MODIFIER_FLAGS: dict[str, int] = {
+    "command": kCGEventFlagMaskCommand,
+    "option": kCGEventFlagMaskAlternate,
+    "shift": kCGEventFlagMaskShift,
+    "control": kCGEventFlagMaskControl,
+}
+
+
+class MacOSTextInjector(TextInjector):
+    """macOS implementation of TextInjector using CGEvent APIs."""
+
+    async def inject_text(self, text: str) -> None:
+        """Inject text using CGEvent keyboard events with Unicode strings.
+
+        Each character is sent as a key-down/key-up pair with the Unicode
+        string set on the event. This works for all Unicode characters
+        including Hebrew and other non-ASCII scripts.
+        """
+        if not text:
+            return
+
+        try:
+            for char in text:
+                # Create key-down event
+                event_down = CGEventCreateKeyboardEvent(None, 0, True)
+                CGEventKeyboardSetUnicodeString(event_down, len(char), char)
+                CGEventPost(kCGHIDEventTap, event_down)
+
+                # Create key-up event
+                event_up = CGEventCreateKeyboardEvent(None, 0, False)
+                CGEventKeyboardSetUnicodeString(event_up, len(char), char)
+                CGEventPost(kCGHIDEventTap, event_up)
+        except Exception as exc:
+            if AXIsProcessTrusted is not None and not AXIsProcessTrusted():
+                raise AccessibilityPermissionError(
+                    "Accessibility permission not granted. Cannot inject text."
+                ) from exc
+            raise InjectionFailedError(
+                f"Failed to inject text: {exc}"
+            ) from exc
+
+    async def send_keystroke(
+        self,
+        key: SpecialKey | str,
+        modifiers: Sequence[KeyModifier] | None = None,
+    ) -> None:
+        """Simulate a keystroke with optional modifier keys.
+
+        Raises:
+            AccessibilityPermissionError: If accessibility permission is denied.
+            InjectionFailedError: If the keystroke cannot be sent.
+        """
+        # Resolve the virtual key code
+        if isinstance(key, SpecialKey):
+            key_code = _SPECIAL_KEY_CODES.get(key.value, 0)
+        else:
+            key_code = _LETTER_KEY_CODES.get(key.lower(), 0)
+
+        # Calculate modifier flags
+        flags = 0
+        if modifiers:
+            for mod in modifiers:
+                mod_value = mod.value if isinstance(mod, KeyModifier) else str(mod)
+                flags |= _MODIFIER_FLAGS.get(mod_value, 0)
+
+        try:
+            # Create and post key-down event
+            event_down = CGEventCreateKeyboardEvent(None, key_code, True)
+            if event_down is None:
+                raise InjectionFailedError(
+                    f"Failed to create key-down event for key code {key_code}"
+                )
+            if flags:
+                CGEventSetFlags(event_down, flags)
+            CGEventPost(kCGHIDEventTap, event_down)
+
+            # Create and post key-up event
+            event_up = CGEventCreateKeyboardEvent(None, key_code, False)
+            if event_up is None:
+                raise InjectionFailedError(
+                    f"Failed to create key-up event for key code {key_code}"
+                )
+            if flags:
+                CGEventSetFlags(event_up, flags)
+            CGEventPost(kCGHIDEventTap, event_up)
+        except (AccessibilityPermissionError, InjectionFailedError):
+            raise
+        except Exception as exc:
+            if AXIsProcessTrusted is not None and not AXIsProcessTrusted():
+                raise AccessibilityPermissionError(
+                    "Accessibility permission not granted. Cannot send keystroke."
+                ) from exc
+            raise InjectionFailedError(
+                f"Failed to send keystroke: {exc}"
+            ) from exc
+
+    def has_accessibility_permission(self) -> bool:
+        """Check if the app has Accessibility permission."""
+        return bool(AXIsProcessTrusted())
+
+    def request_accessibility_permission(self) -> None:
+        """Prompt the user to grant Accessibility permission."""
+        options = {
+            "AXTrustedCheckOptionPrompt": True,
+        }
+        AXIsProcessTrustedWithOptions(options)

@@ -1,0 +1,179 @@
+# CI pipeline for SystemSTT — macOS desktop speech-to-text application.
+#
+# Runs on every push and pull request. Uses macOS runners because the project
+# depends on PyObjC (macOS-only) and PySide6 which may need a display server.
+#
+# Jobs: lint -> typecheck -> test -> build-validation (all run in parallel
+# where possible, with build-validation gated on the other three passing).
+
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Lint with ruff
+  # ---------------------------------------------------------------------------
+  lint:
+    name: Lint (ruff)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/pip
+          key: pip-lint-${{ runner.os }}-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            pip-lint-${{ runner.os }}-
+
+      - name: Install ruff
+        run: pip install "ruff>=0.3"
+
+      - name: Run ruff check
+        run: ruff check src/ tests/
+
+      - name: Run ruff format check
+        run: ruff format --check src/ tests/
+
+  # ---------------------------------------------------------------------------
+  # Type check with mypy
+  # ---------------------------------------------------------------------------
+  typecheck:
+    name: Type Check (mypy --strict)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/pip
+          key: pip-typecheck-${{ runner.os }}-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            pip-typecheck-${{ runner.os }}-
+
+      - name: Install project with dev dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Run mypy --strict
+        run: mypy src/systemstt
+
+  # ---------------------------------------------------------------------------
+  # Test with pytest + coverage (matrix: Python 3.11, 3.12)
+  # ---------------------------------------------------------------------------
+  test:
+    name: Test (pytest, Python ${{ matrix.python-version }})
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/pip
+          key: pip-test-${{ runner.os }}-py${{ matrix.python-version }}-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            pip-test-${{ runner.os }}-py${{ matrix.python-version }}-
+
+      - name: Install project with dev dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Run tests with coverage
+        run: |
+          pytest \
+            --cov=systemstt \
+            --cov-report=term-missing \
+            --cov-report=xml:coverage.xml \
+            --junitxml=test-results.xml \
+            -v
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report-py${{ matrix.python-version }}
+          path: coverage.xml
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-py${{ matrix.python-version }}
+          path: test-results.xml
+
+  # ---------------------------------------------------------------------------
+  # Build validation — ensure the package builds and the .app can be created
+  # ---------------------------------------------------------------------------
+  build:
+    name: Build Validation
+    runs-on: macos-latest
+    needs: [lint, typecheck, test]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/pip
+          key: pip-build-${{ runner.os }}-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            pip-build-${{ runner.os }}-
+
+      - name: Install project with all dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Install build tools
+        run: pip install build pyinstaller
+
+      - name: Validate Python package build (sdist + wheel)
+        run: python -m build
+
+      - name: Validate PyInstaller build
+        run: |
+          pyinstaller systemstt.spec --noconfirm
+          # Verify the .app bundle was created
+          test -d "dist/SystemSTT.app" && echo "Build successful: dist/SystemSTT.app exists"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SystemSTT-macos-app
+          path: dist/SystemSTT.app
+          retention-days: 7

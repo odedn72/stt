@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+
+# Virtual environment
+.venv/
+venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+*.junit.xml
+
+# mypy
+.mypy_cache/
+
+# ruff
+.ruff_cache/
+
+# macOS
+.DS_Store
+
+# PyInstaller
+*.spec.bak
+
+# Logs
+*.log
+
+# Environment
+.env
+.env.local
