@@ -63,6 +63,51 @@ from systemstt.ui.menu_bar import MenuBarWidget
 
 logger = logging.getLogger(__name__)
 
+
+def _strip_overlap(previous_text: str, new_text: str) -> str:
+    """Remove duplicate words at the junction between consecutive transcriptions.
+
+    Audio overlap causes the API to transcribe boundary words twice.
+    Finds the longest suffix of previous_text that matches a prefix of
+    new_text (case-insensitive, ignoring punctuation and accents) and
+    strips it.  Also handles Hebrew prefix conjunctions (ו, ה, ש, etc.)
+    where the API may drop a prefix letter at a chunk boundary.
+    """
+    import re
+    import unicodedata
+
+    def _normalize(word: str) -> str:
+        word = re.sub(r"[^\w]", "", word)
+        # Strip accents (e.g. café → cafe)
+        word = unicodedata.normalize("NFKD", word)
+        word = "".join(c for c in word if not unicodedata.combining(c))
+        return word.lower()
+
+    def _words_match(prev_word: str, new_word: str) -> bool:
+        p = _normalize(prev_word)
+        n = _normalize(new_word)
+        if p == n:
+            return True
+        # Handle Hebrew prefix conjunctions (ו, ה, ש, ב, כ, ל, מ):
+        # "ומדליק" should match "מדליק" (prefix stripped by API)
+        return len(p) > 1 and len(n) > 1 and (p.endswith(n) or n.endswith(p))
+
+    prev_words = previous_text.split()
+    new_words = new_text.split()
+    if not prev_words or not new_words:
+        return new_text
+
+    max_overlap = min(len(prev_words), len(new_words), 6)
+    for overlap_len in range(max_overlap, 0, -1):
+        if all(
+            _words_match(prev_words[-overlap_len + i], new_words[i]) for i in range(overlap_len)
+        ):
+            stripped = " ".join(new_words[overlap_len:])
+            return stripped
+
+    return new_text
+
+
 # Speech-boundary dispatch constants (samples at 16 kHz)
 _SILENCE_CHUNKS_FOR_DISPATCH = 3  # 3 × 500ms = 1.5s silence triggers dispatch
 _MIN_DISPATCH_SAMPLES = 16_000  # 1.0s minimum buffer before dispatch allowed
@@ -526,6 +571,7 @@ class AppController(QObject):
         self._speech_seen = False
         self._trailing_silent_chunks = 0
         self._speech_start_samples = 0
+        self._overlap_audio: np.ndarray | None = None  # type: ignore[type-arg]
 
         # Convert config EngineType → STT EngineType
         stt_engine_type = STTEngineType(self._settings.engine.value)
@@ -685,6 +731,7 @@ class AppController(QObject):
         if speech_boundary or speech_duration or max_cap:
             self._dispatch_transcription(
                 speech_confirmed=self._speech_seen or max_cap,
+                mid_speech=speech_duration and not speech_boundary,
             )
 
     @staticmethod
@@ -718,7 +765,12 @@ class AppController(QObject):
         speech_ratio = float(np.mean(frame_rms > _FRAME_ENERGY_THRESHOLD))
         return speech_ratio >= _MIN_SPEECH_FRACTION
 
-    def _dispatch_transcription(self, *, speech_confirmed: bool = False) -> None:
+    def _dispatch_transcription(
+        self,
+        *,
+        speech_confirmed: bool = False,
+        mid_speech: bool = False,
+    ) -> None:
         """Concatenate buffered audio and dispatch for transcription."""
         if not self._audio_buffer:
             return
@@ -733,28 +785,39 @@ class AppController(QObject):
         ):
             return
 
-        # Trim leading silent chunks (silence before speech started)
-        leading_silent = 0
-        for chunk in self._audio_buffer:
-            if self._has_speech(chunk):
-                break
-            leading_silent += 1
-        if leading_silent > 0 and leading_silent < len(self._audio_buffer):
-            self._audio_buffer = self._audio_buffer[leading_silent:]
+        if not mid_speech:
+            # Trim leading silent chunks (silence before speech started)
+            leading_silent = 0
+            for chunk in self._audio_buffer:
+                if self._has_speech(chunk):
+                    break
+                leading_silent += 1
+            if leading_silent > 0 and leading_silent < len(self._audio_buffer):
+                self._audio_buffer = self._audio_buffer[leading_silent:]
 
-        # Trim trailing silent chunks to avoid hallucinations
-        if (
-            self._trailing_silent_chunks > 0
-            and len(self._audio_buffer) > self._trailing_silent_chunks
-        ):
-            self._audio_buffer = self._audio_buffer[: -self._trailing_silent_chunks]
+            # Trim trailing silent chunks to avoid hallucinations
+            if (
+                self._trailing_silent_chunks > 0
+                and len(self._audio_buffer) > self._trailing_silent_chunks
+            ):
+                self._audio_buffer = self._audio_buffer[: -self._trailing_silent_chunks]
+
+        # Prepend overlap from previous mid-speech dispatch (after trimming)
+        if self._overlap_audio is not None:
+            self._audio_buffer.insert(0, self._overlap_audio)
+            self._overlap_audio = None
+
+        # Save last 2 chunks (1s) as overlap for next dispatch
+        if mid_speech and len(self._audio_buffer) >= 3:
+            self._overlap_audio = np.concatenate(self._audio_buffer[-2:])
 
         audio = np.concatenate(self._audio_buffer)
         self._audio_buffer.clear()
         self._buffered_samples = 0
-        self._speech_seen = False
         self._speech_start_samples = 0
         self._trailing_silent_chunks = 0
+        if not mid_speech:
+            self._speech_seen = False
 
         rms = float(np.sqrt(np.mean(audio**2)))
         logger.info("Dispatch: %.2fs audio, RMS=%.6f", len(audio) / 16_000, rms)
@@ -808,6 +871,13 @@ class AppController(QObject):
             logger.info("Filtered as hallucination, skipping")
             self._maybe_finish_stop()
             return
+
+        # Strip duplicate words caused by audio overlap between dispatches
+        if self._last_transcription_text:
+            text = _strip_overlap(self._last_transcription_text, text)
+            if not text:
+                self._maybe_finish_stop()
+                return
 
         # Add space between consecutive chunks so words don't run together.
         # Skip if this is the first chunk or text starts with whitespace.
