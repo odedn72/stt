@@ -16,12 +16,12 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 
 import numpy as np
 
 
-class AudioLevel(str, Enum):
+class AudioLevel(StrEnum):
     """Categorical audio level classification."""
 
     SILENT = "silent"
@@ -43,7 +43,7 @@ class LevelReading:
 class LevelMeter:
     """Computes audio levels from PCM sample arrays."""
 
-    def compute(self, chunk: np.ndarray) -> LevelReading:
+    def compute(self, chunk: np.ndarray) -> LevelReading:  # type: ignore[type-arg]
         """Compute RMS and peak levels for the given audio chunk.
 
         Args:
@@ -64,15 +64,8 @@ class LevelMeter:
         peak = float(np.max(np.abs(chunk)))
 
         # Convert to dBFS (0 dBFS = full scale = amplitude 1.0)
-        if rms > 0:
-            rms_db = 20.0 * math.log10(rms)
-        else:
-            rms_db = float("-inf")
-
-        if peak > 0:
-            peak_db = 20.0 * math.log10(peak)
-        else:
-            peak_db = float("-inf")
+        rms_db = 20.0 * math.log10(rms) if rms > 0 else float("-inf")
+        peak_db = 20.0 * math.log10(peak) if peak > 0 else float("-inf")
 
         # Classify level
         level = self._classify(rms_db, peak_db)

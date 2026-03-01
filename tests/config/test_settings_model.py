@@ -12,17 +12,16 @@ Tests verify:
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
 import pytest
 
-from systemstt.config.models import SettingsModel, EngineType, WhisperModelSize
-
+from systemstt.config.models import EngineType, SettingsModel, WhisperModelSize
 
 # ---------------------------------------------------------------------------
 # Default values tests (design spec section 8.2)
 # ---------------------------------------------------------------------------
+
 
 class TestSettingsModelDefaults:
     """Tests that default values match the design spec."""
@@ -97,6 +96,7 @@ class TestSettingsModelDefaults:
 # Enum value tests
 # ---------------------------------------------------------------------------
 
+
 class TestSettingsModelEnums:
     """Tests for enum fields."""
 
@@ -125,6 +125,7 @@ class TestSettingsModelEnums:
 # ---------------------------------------------------------------------------
 # Serialization round-trip tests
 # ---------------------------------------------------------------------------
+
 
 class TestSettingsModelSerialization:
     """Tests for JSON serialization and deserialization."""
@@ -174,6 +175,7 @@ class TestSettingsModelSerialization:
 # Forward compatibility tests
 # ---------------------------------------------------------------------------
 
+
 class TestSettingsModelForwardCompatibility:
     """Tests for handling unknown/missing keys (spec section 6.5)."""
 
@@ -195,9 +197,7 @@ class TestSettingsModelForwardCompatibility:
         assert settings.hotkey_key == "space"  # default
         assert settings.show_status_pill is True  # default
 
-    def test_partial_settings_dict(
-        self, partial_settings_dict: dict[str, Any]
-    ) -> None:
+    def test_partial_settings_dict(self, partial_settings_dict: dict[str, Any]) -> None:
         settings = SettingsModel(**partial_settings_dict)
         assert settings.engine == EngineType.LOCAL_WHISPER
         assert settings.local_model_size == WhisperModelSize.SMALL
@@ -209,15 +209,16 @@ class TestSettingsModelForwardCompatibility:
 # Validation tests
 # ---------------------------------------------------------------------------
 
+
 class TestSettingsModelValidation:
     """Tests for input validation."""
 
     def test_invalid_engine_type_rejected(self) -> None:
-        with pytest.raises(Exception):  # pydantic ValidationError
+        with pytest.raises(Exception):  # noqa: B017  # pydantic ValidationError
             SettingsModel(engine="invalid_engine")
 
     def test_invalid_model_size_rejected(self) -> None:
-        with pytest.raises(Exception):
+        with pytest.raises(Exception):  # noqa: B017
             SettingsModel(local_model_size="super_large")
 
     def test_pill_position_accepts_integers(self) -> None:

@@ -12,13 +12,15 @@ All faster-whisper calls are mocked. Tests verify:
 
 from __future__ import annotations
 
-from enum import Enum
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch, PropertyMock
+from typing import TYPE_CHECKING
+from unittest.mock import AsyncMock, MagicMock, patch
 
-import numpy as np
 import pytest
 
+if TYPE_CHECKING:
+    import numpy as np
+
+from systemstt.errors import ModelDownloadError, ModelLoadError, STTEngineError, TranscriptionError
 from systemstt.stt.base import (
     DetectedLanguage,
     EngineState,
@@ -26,16 +28,15 @@ from systemstt.stt.base import (
     TranscriptionResult,
 )
 from systemstt.stt.local_whisper import (
-    LocalWhisperEngine,
     LocalWhisperConfig,
+    LocalWhisperEngine,
     WhisperModelSize,
 )
-from systemstt.errors import ModelLoadError, ModelDownloadError, TranscriptionError, STTEngineError
-
 
 # ---------------------------------------------------------------------------
 # WhisperModelSize tests
 # ---------------------------------------------------------------------------
+
 
 class TestWhisperModelSize:
     """Tests for the WhisperModelSize enum."""
@@ -49,6 +50,7 @@ class TestWhisperModelSize:
 # ---------------------------------------------------------------------------
 # LocalWhisperConfig tests
 # ---------------------------------------------------------------------------
+
 
 class TestLocalWhisperConfig:
     """Tests for LocalWhisperConfig dataclass."""
@@ -87,6 +89,7 @@ class TestLocalWhisperConfig:
 # ---------------------------------------------------------------------------
 # LocalWhisperEngine lifecycle tests
 # ---------------------------------------------------------------------------
+
 
 class TestLocalWhisperEngineLifecycle:
     """Tests for engine initialization and shutdown."""
@@ -143,6 +146,7 @@ class TestLocalWhisperEngineLifecycle:
 # LocalWhisperEngine transcription tests
 # ---------------------------------------------------------------------------
 
+
 class TestLocalWhisperEngineTranscribe:
     """Tests for local engine transcription."""
 
@@ -190,9 +194,7 @@ class TestLocalWhisperEngineTranscribe:
         config = LocalWhisperConfig()
         engine = LocalWhisperEngine(config)
         await engine.initialize()
-        result = await engine.transcribe(
-            sine_wave_chunk, language_hint=DetectedLanguage.HEBREW
-        )
+        result = await engine.transcribe(sine_wave_chunk, language_hint=DetectedLanguage.HEBREW)
 
         assert result.primary_language == DetectedLanguage.HEBREW
 
@@ -226,7 +228,10 @@ class TestLocalWhisperEngineTranscribe:
         self, mock_model_cls: MagicMock, empty_chunk: np.ndarray
     ) -> None:
         mock_model = mock_model_cls.return_value
-        mock_model.transcribe.return_value = ([], MagicMock(language="en", language_probability=0.5))
+        mock_model.transcribe.return_value = (
+            [],
+            MagicMock(language="en", language_probability=0.5),
+        )
 
         config = LocalWhisperConfig()
         engine = LocalWhisperEngine(config)
@@ -241,6 +246,7 @@ class TestLocalWhisperEngineTranscribe:
 # LocalWhisperEngine model management tests
 # ---------------------------------------------------------------------------
 
+
 class TestLocalWhisperEngineModelManagement:
     """Tests for model download and availability checking."""
 
@@ -251,18 +257,14 @@ class TestLocalWhisperEngineModelManagement:
 
     @pytest.mark.asyncio
     @patch("systemstt.stt.local_whisper.WhisperModel")
-    async def test_is_available_true_when_ready(
-        self, mock_model_cls: MagicMock
-    ) -> None:
+    async def test_is_available_true_when_ready(self, mock_model_cls: MagicMock) -> None:
         config = LocalWhisperConfig()
         engine = LocalWhisperEngine(config)
         await engine.initialize()
         assert engine.is_available() is True
 
     @patch("systemstt.stt.local_whisper.Path")
-    def test_is_model_downloaded_checks_cache_dir(
-        self, mock_path: MagicMock
-    ) -> None:
+    def test_is_model_downloaded_checks_cache_dir(self, mock_path: MagicMock) -> None:
         config = LocalWhisperConfig(model_size=WhisperModelSize.SMALL)
         engine = LocalWhisperEngine(config)
         result = engine.is_model_downloaded()
@@ -278,9 +280,11 @@ class TestLocalWhisperEngineModelManagement:
     async def test_download_model_raises_on_network_failure(self) -> None:
         config = LocalWhisperConfig()
         engine = LocalWhisperEngine(config)
-        with patch.object(engine, "download_model", side_effect=ModelDownloadError("network error")):
-            with pytest.raises(ModelDownloadError):
-                await engine.download_model()
+        with (
+            patch.object(engine, "download_model", side_effect=ModelDownloadError("network error")),
+            pytest.raises(ModelDownloadError),
+        ):
+            await engine.download_model()
 
     @pytest.mark.asyncio
     async def test_download_model_calls_progress_callback(self) -> None:
@@ -296,6 +300,7 @@ class TestLocalWhisperEngineModelManagement:
 # ---------------------------------------------------------------------------
 # LocalWhisperEngine accuracy parameter tests
 # ---------------------------------------------------------------------------
+
 
 class TestLocalWhisperEngineAccuracyParams:
     """Tests for VAD, temperature, and hallucination threshold parameters."""

@@ -9,9 +9,8 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Optional
 
-import sounddevice as sd
+import sounddevice as sd  # type: ignore[import-untyped]
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +60,7 @@ class DeviceEnumerator:
                 )
         return result
 
-    def get_default_device(self) -> Optional[AudioDevice]:
+    def get_default_device(self) -> AudioDevice | None:
         """Return the default input device, or None if no input devices exist."""
         devices = self.list_input_devices()
         for dev in devices:
@@ -69,7 +68,7 @@ class DeviceEnumerator:
                 return dev
         return None
 
-    def get_device_by_id(self, device_id: int) -> Optional[AudioDevice]:
+    def get_device_by_id(self, device_id: int) -> AudioDevice | None:
         """Return an input device by its ID, or None if not found or not input-capable."""
         devices = self.list_input_devices()
         for dev in devices:

@@ -9,20 +9,19 @@ missing fields.
 
 from __future__ import annotations
 
-from enum import Enum
-from typing import Optional
+from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict
 
 
-class EngineType(str, Enum):
+class EngineType(StrEnum):
     """STT engine type selection."""
 
     CLOUD_API = "cloud_api"
     LOCAL_WHISPER = "local_whisper"
 
 
-class WhisperModelSize(str, Enum):
+class WhisperModelSize(StrEnum):
     """Local Whisper model sizes."""
 
     TINY = "tiny"
@@ -55,8 +54,8 @@ class SettingsModel(BaseModel):
     show_live_preview: bool = False
 
     # Pill position (None = default position)
-    pill_position_x: Optional[int] = None
-    pill_position_y: Optional[int] = None
+    pill_position_x: int | None = None
+    pill_position_y: int | None = None
 
     # Engine selection
     engine: EngineType = EngineType.CLOUD_API
@@ -71,8 +70,8 @@ class SettingsModel(BaseModel):
     local_compute_type: str = "int8"
 
     # Audio settings
-    audio_device_id: Optional[int] = None
-    audio_device_name: Optional[str] = None
+    audio_device_id: int | None = None
+    audio_device_name: str | None = None
 
     # Voice commands
     voice_commands_enabled: bool = True

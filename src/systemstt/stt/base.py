@@ -8,15 +8,17 @@ data models for transcription results.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import AsyncIterator
 from dataclasses import dataclass
-from enum import Enum
-from typing import Optional, Sequence
+from enum import StrEnum
+from typing import TYPE_CHECKING
 
-import numpy as np
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator, Sequence
+
+    import numpy as np
 
 
-class DetectedLanguage(str, Enum):
+class DetectedLanguage(StrEnum):
     """Detected language of transcribed text."""
 
     ENGLISH = "en"
@@ -24,14 +26,14 @@ class DetectedLanguage(str, Enum):
     UNKNOWN = "unknown"
 
 
-class EngineType(str, Enum):
+class EngineType(StrEnum):
     """Type of STT engine."""
 
     LOCAL_WHISPER = "local_whisper"
     CLOUD_API = "cloud_api"
 
 
-class EngineState(str, Enum):
+class EngineState(StrEnum):
     """State of an STT engine."""
 
     UNINITIALIZED = "uninitialized"
@@ -91,9 +93,9 @@ class STTEngine(ABC):
     @abstractmethod
     async def transcribe(
         self,
-        audio: np.ndarray,
-        language_hint: Optional[DetectedLanguage] = None,
-        context_prompt: Optional[str] = None,
+        audio: np.ndarray,  # type: ignore[type-arg]
+        language_hint: DetectedLanguage | None = None,
+        context_prompt: str | None = None,
     ) -> TranscriptionResult:
         """Transcribe audio data to text."""
         ...
@@ -101,9 +103,9 @@ class STTEngine(ABC):
     @abstractmethod
     async def transcribe_stream(
         self,
-        audio_stream: AsyncIterator[np.ndarray],
+        audio_stream: AsyncIterator[np.ndarray],  # type: ignore[type-arg]
         *,
-        language_hint: Optional[DetectedLanguage] = None,
+        language_hint: DetectedLanguage | None = None,
     ) -> AsyncIterator[TranscriptionResult]:
         """Stream-transcribe audio, yielding partial results as they become available.
 

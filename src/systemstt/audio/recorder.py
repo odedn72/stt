@@ -9,11 +9,15 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from enum import Enum
-from typing import Callable, Optional
+from enum import StrEnum
+from typing import TYPE_CHECKING
 
-import numpy as np
-import sounddevice as sd
+import sounddevice as sd  # type: ignore[import-untyped]
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    import numpy as np
 
 from systemstt.errors import AudioCaptureError, DeviceNotFoundError
 
@@ -28,10 +32,10 @@ class AudioConfig:
     channels: int = 1
     dtype: str = "float32"
     chunk_duration_ms: int = 500
-    device_id: Optional[int] = None
+    device_id: int | None = None
 
 
-class RecorderState(str, Enum):
+class RecorderState(StrEnum):
     """State of the audio recorder."""
 
     IDLE = "idle"
@@ -49,9 +53,9 @@ class AudioRecorder:
     def __init__(self, config: AudioConfig) -> None:
         self._config = config
         self._state = RecorderState.IDLE
-        self._stream: Optional[sd.InputStream] = None
-        self.on_audio_chunk: Optional[Callable[[np.ndarray], None]] = None
-        self.on_error: Optional[Callable[[Exception], None]] = None
+        self._stream: sd.InputStream | None = None
+        self.on_audio_chunk: Callable[[np.ndarray], None] | None = None  # type: ignore[type-arg]
+        self.on_error: Callable[[Exception], None] | None = None
 
     @property
     def state(self) -> RecorderState:
@@ -60,7 +64,7 @@ class AudioRecorder:
 
     def _audio_callback(
         self,
-        indata: np.ndarray,
+        indata: np.ndarray,  # type: ignore[type-arg]
         frames: int,
         time_info: object,
         status: sd.CallbackFlags,
@@ -82,9 +86,7 @@ class AudioRecorder:
         if self._state == RecorderState.RECORDING:
             return
 
-        blocksize = int(
-            self._config.sample_rate * self._config.chunk_duration_ms / 1000
-        )
+        blocksize = int(self._config.sample_rate * self._config.chunk_duration_ms / 1000)
 
         try:
             self._stream = sd.InputStream(

@@ -18,12 +18,12 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from systemstt.app import DictationStateMachine, DictationState, StateTransition
-
+from systemstt.app import DictationState, DictationStateMachine, StateTransition
 
 # ---------------------------------------------------------------------------
 # DictationState enum tests
 # ---------------------------------------------------------------------------
+
 
 class TestDictationState:
     """Tests for the DictationState enum."""
@@ -47,6 +47,7 @@ class TestDictationState:
 # ---------------------------------------------------------------------------
 # StateTransition data model tests
 # ---------------------------------------------------------------------------
+
 
 class TestStateTransition:
     """Tests for the StateTransition record."""
@@ -86,6 +87,7 @@ class TestStateTransition:
 # DictationStateMachine initialization tests
 # ---------------------------------------------------------------------------
 
+
 class TestDictationStateMachineInit:
     """Tests for state machine initialization."""
 
@@ -107,6 +109,7 @@ class TestDictationStateMachineInit:
 # ---------------------------------------------------------------------------
 # Valid transitions tests (spec 06, section 3.3)
 # ---------------------------------------------------------------------------
+
 
 class TestDictationStateMachineValidTransitions:
     """Tests for all valid state transitions."""
@@ -168,6 +171,7 @@ class TestDictationStateMachineValidTransitions:
 # ---------------------------------------------------------------------------
 # Invalid transitions tests
 # ---------------------------------------------------------------------------
+
 
 class TestDictationStateMachineInvalidTransitions:
     """Tests that invalid transitions raise ValueError."""
@@ -248,6 +252,7 @@ class TestDictationStateMachineInvalidTransitions:
 # can_transition_to tests
 # ---------------------------------------------------------------------------
 
+
 class TestDictationStateMachineCanTransition:
     """Tests for the can_transition_to query method."""
 
@@ -291,6 +296,7 @@ class TestDictationStateMachineCanTransition:
 # ---------------------------------------------------------------------------
 # State change callback tests
 # ---------------------------------------------------------------------------
+
 
 class TestDictationStateMachineCallbacks:
     """Tests for the on_state_changed callback."""
@@ -346,6 +352,7 @@ class TestDictationStateMachineCallbacks:
 # Full lifecycle test
 # ---------------------------------------------------------------------------
 
+
 class TestDictationStateMachineFullLifecycle:
     """End-to-end state machine lifecycle tests."""
 
@@ -396,6 +403,7 @@ class TestDictationStateMachineFullLifecycle:
 # ---------------------------------------------------------------------------
 # Edge case tests
 # ---------------------------------------------------------------------------
+
 
 class TestDictationStateMachineEdgeCases:
     """Edge case tests for the state machine."""

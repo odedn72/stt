@@ -8,7 +8,10 @@ text manipulation) via the TextInjector interface.
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 from systemstt.commands.registry import CommandAction
 from systemstt.platform.base import KeyModifier, SpecialKey
@@ -21,7 +24,7 @@ class CommandExecutor:
 
     def __init__(
         self,
-        text_injector: Any,
+        text_injector: Any,  # noqa: ANN401
         stop_dictation_callback: Callable[[], None],
     ) -> None:
         self._injector = text_injector
@@ -57,9 +60,7 @@ class CommandExecutor:
 
     async def _delete_last_word(self) -> None:
         """Delete the last word: Option+Backspace on macOS."""
-        await self._injector.send_keystroke(
-            SpecialKey.BACKSPACE, modifiers=[KeyModifier.OPTION]
-        )
+        await self._injector.send_keystroke(SpecialKey.BACKSPACE, modifiers=[KeyModifier.OPTION])
 
     async def _delete_last_sentence(self) -> None:
         """Delete the last sentence.
@@ -69,15 +70,11 @@ class CommandExecutor:
         use text analysis.
         """
         # Select from cursor to beginning of line, then delete
-        await self._injector.send_keystroke(
-            SpecialKey.BACKSPACE, modifiers=[KeyModifier.COMMAND]
-        )
+        await self._injector.send_keystroke(SpecialKey.BACKSPACE, modifiers=[KeyModifier.COMMAND])
 
     async def _undo(self) -> None:
         """Undo: Cmd+Z on macOS."""
-        await self._injector.send_keystroke(
-            "z", modifiers=[KeyModifier.COMMAND]
-        )
+        await self._injector.send_keystroke("z", modifiers=[KeyModifier.COMMAND])
 
     async def _new_line(self) -> None:
         """Insert a new line: Return key."""
@@ -90,18 +87,12 @@ class CommandExecutor:
 
     async def _select_all(self) -> None:
         """Select all: Cmd+A on macOS."""
-        await self._injector.send_keystroke(
-            "a", modifiers=[KeyModifier.COMMAND]
-        )
+        await self._injector.send_keystroke("a", modifiers=[KeyModifier.COMMAND])
 
     async def _copy(self) -> None:
         """Copy: Cmd+C on macOS."""
-        await self._injector.send_keystroke(
-            "c", modifiers=[KeyModifier.COMMAND]
-        )
+        await self._injector.send_keystroke("c", modifiers=[KeyModifier.COMMAND])
 
     async def _paste(self) -> None:
         """Paste: Cmd+V on macOS."""
-        await self._injector.send_keystroke(
-            "v", modifiers=[KeyModifier.COMMAND]
-        )
+        await self._injector.send_keystroke("v", modifiers=[KeyModifier.COMMAND])

@@ -10,22 +10,21 @@ Verifies:
 
 from __future__ import annotations
 
-import numpy as np
 import pytest
 
 from systemstt.stt.base import (
     DetectedLanguage,
-    EngineType,
     EngineState,
-    TranscriptionSegment,
-    TranscriptionResult,
+    EngineType,
     STTEngine,
+    TranscriptionResult,
+    TranscriptionSegment,
 )
-
 
 # ---------------------------------------------------------------------------
 # Enum tests
 # ---------------------------------------------------------------------------
+
 
 class TestDetectedLanguage:
     """Tests for the DetectedLanguage enum."""
@@ -73,6 +72,7 @@ class TestEngineState:
 # TranscriptionSegment tests
 # ---------------------------------------------------------------------------
 
+
 class TestTranscriptionSegment:
     """Tests for the TranscriptionSegment dataclass."""
 
@@ -94,8 +94,12 @@ class TestTranscriptionSegment:
 
     def test_segment_is_frozen(self) -> None:
         segment = TranscriptionSegment(
-            text="test", language=DetectedLanguage.ENGLISH,
-            start_time=0.0, end_time=1.0, confidence=0.9, is_partial=False,
+            text="test",
+            language=DetectedLanguage.ENGLISH,
+            start_time=0.0,
+            end_time=1.0,
+            confidence=0.9,
+            is_partial=False,
         )
         with pytest.raises(AttributeError):
             segment.text = "modified"  # type: ignore[misc]
@@ -104,7 +108,10 @@ class TestTranscriptionSegment:
         segment = TranscriptionSegment(
             text="\u05e9\u05dc\u05d5\u05dd \u05e2\u05d5\u05dc\u05dd",
             language=DetectedLanguage.HEBREW,
-            start_time=0.0, end_time=1.2, confidence=0.88, is_partial=False,
+            start_time=0.0,
+            end_time=1.2,
+            confidence=0.88,
+            is_partial=False,
         )
         assert segment.language == DetectedLanguage.HEBREW
         assert "\u05e9\u05dc\u05d5\u05dd" in segment.text
@@ -113,15 +120,22 @@ class TestTranscriptionSegment:
         segment = TranscriptionSegment(
             text="partial result",
             language=DetectedLanguage.ENGLISH,
-            start_time=0.0, end_time=0.5, confidence=0.6, is_partial=True,
+            start_time=0.0,
+            end_time=0.5,
+            confidence=0.6,
+            is_partial=True,
         )
         assert segment.is_partial is True
 
     def test_segment_confidence_range(self) -> None:
         """Confidence should be 0.0 to 1.0."""
         segment = TranscriptionSegment(
-            text="test", language=DetectedLanguage.ENGLISH,
-            start_time=0.0, end_time=1.0, confidence=0.0, is_partial=False,
+            text="test",
+            language=DetectedLanguage.ENGLISH,
+            start_time=0.0,
+            end_time=1.0,
+            confidence=0.0,
+            is_partial=False,
         )
         assert 0.0 <= segment.confidence <= 1.0
 
@@ -130,13 +144,18 @@ class TestTranscriptionSegment:
 # TranscriptionResult tests
 # ---------------------------------------------------------------------------
 
+
 class TestTranscriptionResult:
     """Tests for the TranscriptionResult dataclass."""
 
     def test_result_fields(self) -> None:
         segment = TranscriptionSegment(
-            text="Hello", language=DetectedLanguage.ENGLISH,
-            start_time=0.0, end_time=1.0, confidence=0.95, is_partial=False,
+            text="Hello",
+            language=DetectedLanguage.ENGLISH,
+            start_time=0.0,
+            end_time=1.0,
+            confidence=0.95,
+            is_partial=False,
         )
         result = TranscriptionResult(
             segments=[segment],
@@ -154,12 +173,18 @@ class TestTranscriptionResult:
             TranscriptionSegment(
                 text="\u05e9\u05dc\u05d5\u05dd",
                 language=DetectedLanguage.HEBREW,
-                start_time=0.0, end_time=0.5, confidence=0.85, is_partial=False,
+                start_time=0.0,
+                end_time=0.5,
+                confidence=0.85,
+                is_partial=False,
             ),
             TranscriptionSegment(
                 text="world",
                 language=DetectedLanguage.ENGLISH,
-                start_time=0.5, end_time=1.0, confidence=0.92, is_partial=False,
+                start_time=0.5,
+                end_time=1.0,
+                confidence=0.92,
+                is_partial=False,
             ),
         ]
         result = TranscriptionResult(
@@ -173,7 +198,8 @@ class TestTranscriptionResult:
 
     def test_result_is_frozen(self) -> None:
         result = TranscriptionResult(
-            segments=[], full_text="",
+            segments=[],
+            full_text="",
             primary_language=DetectedLanguage.UNKNOWN,
             processing_time_ms=0.0,
         )
@@ -182,7 +208,8 @@ class TestTranscriptionResult:
 
     def test_empty_result(self) -> None:
         result = TranscriptionResult(
-            segments=[], full_text="",
+            segments=[],
+            full_text="",
             primary_language=DetectedLanguage.UNKNOWN,
             processing_time_ms=50.0,
         )
@@ -193,6 +220,7 @@ class TestTranscriptionResult:
 # ---------------------------------------------------------------------------
 # STTEngine ABC tests
 # ---------------------------------------------------------------------------
+
 
 class TestSTTEngineABC:
     """Tests that STTEngine cannot be instantiated directly."""

@@ -8,7 +8,6 @@ and shutting down STT engines.
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 from systemstt.errors import STTEngineError
 from systemstt.stt.base import EngineType, STTEngine
@@ -28,16 +27,16 @@ class EngineManager:
     ) -> None:
         self._local_config = local_config
         self._cloud_config = cloud_config
-        self._active_engine: Optional[STTEngine] = None
-        self._active_engine_type: Optional[EngineType] = None
+        self._active_engine: STTEngine | None = None
+        self._active_engine_type: EngineType | None = None
 
     @property
-    def active_engine(self) -> Optional[STTEngine]:
+    def active_engine(self) -> STTEngine | None:
         """Return the currently active engine, or None."""
         return self._active_engine
 
     @property
-    def active_engine_type(self) -> Optional[EngineType]:
+    def active_engine_type(self) -> EngineType | None:
         """Return the type of the currently active engine, or None."""
         return self._active_engine_type
 

@@ -13,9 +13,11 @@ import logging
 import math
 import struct
 import time
-from collections.abc import AsyncIterator
-from dataclasses import dataclass, field
-from typing import Optional
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
 
 import httpx
 import numpy as np
@@ -53,7 +55,7 @@ class CloudAPIConfig:
     retry_delay_seconds: float = 1.0
 
 
-def _audio_to_wav_bytes(audio: np.ndarray, sample_rate: int = 16_000) -> bytes:
+def _audio_to_wav_bytes(audio: np.ndarray, sample_rate: int = 16_000) -> bytes:  # type: ignore[type-arg]
     """Convert a float32 numpy array to WAV bytes in memory."""
     buf = io.BytesIO()
     # Convert float32 [-1.0, 1.0] to int16
@@ -67,11 +69,11 @@ def _audio_to_wav_bytes(audio: np.ndarray, sample_rate: int = 16_000) -> bytes:
     buf.write(b"WAVE")
     buf.write(b"fmt ")
     buf.write(struct.pack("<I", 16))  # chunk size
-    buf.write(struct.pack("<H", 1))   # PCM format
-    buf.write(struct.pack("<H", 1))   # mono
+    buf.write(struct.pack("<H", 1))  # PCM format
+    buf.write(struct.pack("<H", 1))  # mono
     buf.write(struct.pack("<I", sample_rate))
     buf.write(struct.pack("<I", sample_rate * 2))  # byte rate
-    buf.write(struct.pack("<H", 2))   # block align
+    buf.write(struct.pack("<H", 2))  # block align
     buf.write(struct.pack("<H", 16))  # bits per sample
     buf.write(b"data")
     buf.write(struct.pack("<I", data_size))
@@ -96,7 +98,7 @@ class CloudAPIEngine(STTEngine):
     def __init__(self, config: CloudAPIConfig) -> None:
         self._config = config
         self._state = EngineState.UNINITIALIZED
-        self._client: Optional[httpx.AsyncClient] = None
+        self._client: httpx.AsyncClient | None = None
 
     @property
     def engine_type(self) -> EngineType:
@@ -148,22 +150,21 @@ class CloudAPIEngine(STTEngine):
 
     async def transcribe(
         self,
-        audio: np.ndarray,
-        language_hint: Optional[DetectedLanguage] = None,
-        context_prompt: Optional[str] = None,
+        audio: np.ndarray,  # type: ignore[type-arg]
+        language_hint: DetectedLanguage | None = None,
+        context_prompt: str | None = None,
     ) -> TranscriptionResult:
         """Transcribe audio using the cloud API with retry logic."""
         if self._state != EngineState.READY:
-            raise STTEngineError(
-                "CloudAPIEngine is not initialized. Call initialize() first."
-            )
+            raise STTEngineError("CloudAPIEngine is not initialized. Call initialize() first.")
 
         self._state = EngineState.TRANSCRIBING
-        start_time = time.monotonic()
 
         try:
             result = await self._transcribe_with_retry(
-                audio, language_hint, context_prompt,
+                audio,
+                language_hint,
+                context_prompt,
             )
             return result
         finally:
@@ -172,9 +173,9 @@ class CloudAPIEngine(STTEngine):
 
     async def transcribe_stream(
         self,
-        audio_stream: AsyncIterator[np.ndarray],
+        audio_stream: AsyncIterator[np.ndarray],  # type: ignore[type-arg]
         *,
-        language_hint: Optional[DetectedLanguage] = None,
+        language_hint: DetectedLanguage | None = None,
     ) -> AsyncIterator[TranscriptionResult]:
         """Stream-transcribe audio by buffering chunks and transcribing periodically.
 
@@ -195,11 +196,9 @@ class CloudAPIEngine(STTEngine):
             STTEngineError: If the engine is not in READY state.
         """
         if self._state != EngineState.READY:
-            raise STTEngineError(
-                "CloudAPIEngine is not initialized. Call initialize() first."
-            )
+            raise STTEngineError("CloudAPIEngine is not initialized. Call initialize() first.")
 
-        buffer_chunks: list[np.ndarray] = []
+        buffer_chunks: list[np.ndarray] = []  # type: ignore[type-arg]
         buffered_samples = 0
 
         async for chunk in audio_stream:
@@ -238,9 +237,9 @@ class CloudAPIEngine(STTEngine):
 
     async def _transcribe_with_retry(
         self,
-        audio: np.ndarray,
-        language_hint: Optional[DetectedLanguage] = None,
-        context_prompt: Optional[str] = None,
+        audio: np.ndarray,  # type: ignore[type-arg]
+        language_hint: DetectedLanguage | None = None,
+        context_prompt: str | None = None,
     ) -> TranscriptionResult:
         """Attempt transcription with retry logic."""
         last_exception: Exception | None = None
@@ -249,12 +248,15 @@ class CloudAPIEngine(STTEngine):
         for attempt in range(self._config.max_retries):
             try:
                 return await self._do_transcribe(
-                    audio, language_hint, start_time, context_prompt,
+                    audio,
+                    language_hint,
+                    start_time,
+                    context_prompt,
                 )
             except (APITimeoutError, APIRateLimitError, APIUnavailableError) as exc:
                 last_exception = exc
                 if attempt < self._config.max_retries - 1:
-                    delay = self._config.retry_delay_seconds * (2 ** attempt)
+                    delay = self._config.retry_delay_seconds * (2**attempt)
                     logger.warning(
                         "Transcription attempt %d failed: %s. Retrying in %.1fs",
                         attempt + 1,
@@ -273,10 +275,10 @@ class CloudAPIEngine(STTEngine):
 
     async def _do_transcribe(
         self,
-        audio: np.ndarray,
-        language_hint: Optional[DetectedLanguage],
+        audio: np.ndarray,  # type: ignore[type-arg]
+        language_hint: DetectedLanguage | None,
         start_time: float,
-        context_prompt: Optional[str] = None,
+        context_prompt: str | None = None,
     ) -> TranscriptionResult:
         """Perform a single transcription attempt."""
         wav_bytes = _audio_to_wav_bytes(audio)
@@ -308,16 +310,10 @@ class CloudAPIEngine(STTEngine):
                     f"API authentication failed (HTTP 401): {exc}"
                 ) from exc
             if status_code == 429:
-                raise APIRateLimitError(
-                    f"API rate limit exceeded (HTTP 429): {exc}"
-                ) from exc
+                raise APIRateLimitError(f"API rate limit exceeded (HTTP 429): {exc}") from exc
             if status_code >= 500:
-                raise APIUnavailableError(
-                    f"API unavailable (HTTP {status_code}): {exc}"
-                ) from exc
-            raise CloudAPIError(
-                f"API request failed (HTTP {status_code}): {exc}"
-            ) from exc
+                raise APIUnavailableError(f"API unavailable (HTTP {status_code}): {exc}") from exc
+            raise CloudAPIError(f"API request failed (HTTP {status_code}): {exc}") from exc
 
         return self._parse_response(response.json(), start_time)
 

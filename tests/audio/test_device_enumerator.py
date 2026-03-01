@@ -12,12 +12,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from systemstt.audio.devices import DeviceEnumerator, AudioDevice
-
+from systemstt.audio.devices import AudioDevice, DeviceEnumerator
 
 # ---------------------------------------------------------------------------
 # AudioDevice data model tests
 # ---------------------------------------------------------------------------
+
 
 class TestAudioDevice:
     """Tests for the AudioDevice dataclass."""
@@ -38,8 +38,11 @@ class TestAudioDevice:
 
     def test_audio_device_is_frozen(self) -> None:
         device = AudioDevice(
-            device_id=0, name="Mic", is_default=True,
-            max_input_channels=1, sample_rate=44100.0,
+            device_id=0,
+            name="Mic",
+            is_default=True,
+            max_input_channels=1,
+            sample_rate=44100.0,
         )
         with pytest.raises(AttributeError):
             device.name = "Other"  # type: ignore[misc]
@@ -48,6 +51,7 @@ class TestAudioDevice:
 # ---------------------------------------------------------------------------
 # DeviceEnumerator tests
 # ---------------------------------------------------------------------------
+
 
 class TestDeviceEnumeratorListDevices:
     """Tests for listing available input devices."""
@@ -79,9 +83,7 @@ class TestDeviceEnumeratorListDevices:
             assert isinstance(device, AudioDevice)
 
     @patch("systemstt.audio.devices.sd")
-    def test_list_input_devices_empty_when_no_devices(
-        self, mock_sd: MagicMock
-    ) -> None:
+    def test_list_input_devices_empty_when_no_devices(self, mock_sd: MagicMock) -> None:
         mock_sd.query_devices.return_value = []
         mock_sd.default.device = (-1, -1)
         enum = DeviceEnumerator()
@@ -121,8 +123,13 @@ class TestDeviceEnumeratorGetDevice:
         self, mock_sd: MagicMock
     ) -> None:
         mock_sd.query_devices.return_value = [
-            {"name": "Speakers", "index": 0, "max_input_channels": 0,
-             "max_output_channels": 2, "default_samplerate": 44100.0},
+            {
+                "name": "Speakers",
+                "index": 0,
+                "max_input_channels": 0,
+                "max_output_channels": 2,
+                "default_samplerate": 44100.0,
+            },
         ]
         mock_sd.default.device = (-1, 0)
         enum = DeviceEnumerator()
@@ -165,13 +172,16 @@ class TestDeviceEnumeratorRefresh:
     """Tests for device refresh functionality."""
 
     @patch("systemstt.audio.devices.sd")
-    def test_refresh_returns_updated_device_list(
-        self, mock_sd: MagicMock
-    ) -> None:
+    def test_refresh_returns_updated_device_list(self, mock_sd: MagicMock) -> None:
         # First call: one device
         mock_sd.query_devices.return_value = [
-            {"name": "Mic A", "index": 0, "max_input_channels": 1,
-             "max_output_channels": 0, "default_samplerate": 44100.0},
+            {
+                "name": "Mic A",
+                "index": 0,
+                "max_input_channels": 1,
+                "max_output_channels": 0,
+                "default_samplerate": 44100.0,
+            },
         ]
         mock_sd.default.device = (0, -1)
         enum = DeviceEnumerator()
@@ -180,10 +190,20 @@ class TestDeviceEnumeratorRefresh:
 
         # After refresh: two devices
         mock_sd.query_devices.return_value = [
-            {"name": "Mic A", "index": 0, "max_input_channels": 1,
-             "max_output_channels": 0, "default_samplerate": 44100.0},
-            {"name": "Mic B", "index": 1, "max_input_channels": 1,
-             "max_output_channels": 0, "default_samplerate": 48000.0},
+            {
+                "name": "Mic A",
+                "index": 0,
+                "max_input_channels": 1,
+                "max_output_channels": 0,
+                "default_samplerate": 44100.0,
+            },
+            {
+                "name": "Mic B",
+                "index": 1,
+                "max_input_channels": 1,
+                "max_output_channels": 0,
+                "default_samplerate": 48000.0,
+            },
         ]
         devices2 = enum.refresh()
         assert len(devices2) == 2
@@ -193,13 +213,12 @@ class TestDeviceEnumeratorRefresh:
 # DeviceEnumerator edge case tests
 # ---------------------------------------------------------------------------
 
+
 class TestDeviceEnumeratorEdgeCases:
     """Edge case tests for device enumeration."""
 
     @patch("systemstt.audio.devices.sd")
-    def test_query_devices_exception_returns_empty_list(
-        self, mock_sd: MagicMock
-    ) -> None:
+    def test_query_devices_exception_returns_empty_list(self, mock_sd: MagicMock) -> None:
         """When sounddevice raises an exception, list_input_devices returns []."""
         mock_sd.query_devices.side_effect = RuntimeError("PortAudio not available")
         enum = DeviceEnumerator()
@@ -207,13 +226,14 @@ class TestDeviceEnumeratorEdgeCases:
         assert devices == []
 
     @patch("systemstt.audio.devices.sd")
-    def test_single_device_returned_as_dict_not_list(
-        self, mock_sd: MagicMock
-    ) -> None:
+    def test_single_device_returned_as_dict_not_list(self, mock_sd: MagicMock) -> None:
         """When sounddevice returns a single device (not a list), handle gracefully."""
         single_device = {
-            "name": "Solo Mic", "index": 0, "max_input_channels": 1,
-            "max_output_channels": 0, "default_samplerate": 44100.0,
+            "name": "Solo Mic",
+            "index": 0,
+            "max_input_channels": 1,
+            "max_output_channels": 0,
+            "default_samplerate": 44100.0,
         }
         mock_sd.query_devices.return_value = single_device
         mock_sd.default.device = (0, -1)
@@ -223,13 +243,15 @@ class TestDeviceEnumeratorEdgeCases:
         assert devices[0].name == "Solo Mic"
 
     @patch("systemstt.audio.devices.sd")
-    def test_device_with_missing_name_uses_unknown(
-        self, mock_sd: MagicMock
-    ) -> None:
+    def test_device_with_missing_name_uses_unknown(self, mock_sd: MagicMock) -> None:
         """A device dict missing 'name' should default to 'Unknown'."""
         mock_sd.query_devices.return_value = [
-            {"index": 0, "max_input_channels": 1, "max_output_channels": 0,
-             "default_samplerate": 44100.0},
+            {
+                "index": 0,
+                "max_input_channels": 1,
+                "max_output_channels": 0,
+                "default_samplerate": 44100.0,
+            },
         ]
         mock_sd.default.device = (0, -1)
         enum = DeviceEnumerator()
@@ -238,9 +260,7 @@ class TestDeviceEnumeratorEdgeCases:
         assert devices[0].name == "Unknown"
 
     @patch("systemstt.audio.devices.sd")
-    def test_get_default_device_when_query_fails_returns_none(
-        self, mock_sd: MagicMock
-    ) -> None:
+    def test_get_default_device_when_query_fails_returns_none(self, mock_sd: MagicMock) -> None:
         """When query_devices fails, get_default_device should return None."""
         mock_sd.query_devices.side_effect = RuntimeError("fail")
         enum = DeviceEnumerator()

@@ -18,12 +18,12 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from systemstt.audio.level_meter import LevelMeter, LevelReading, AudioLevel
-
+from systemstt.audio.level_meter import AudioLevel, LevelMeter, LevelReading
 
 # ---------------------------------------------------------------------------
 # AudioLevel enum tests
 # ---------------------------------------------------------------------------
+
 
 class TestAudioLevel:
     """Tests for the AudioLevel enum."""
@@ -48,6 +48,7 @@ class TestAudioLevel:
 # LevelReading data model tests
 # ---------------------------------------------------------------------------
 
+
 class TestLevelReading:
     """Tests for the LevelReading dataclass."""
 
@@ -67,6 +68,7 @@ class TestLevelReading:
 # LevelMeter computation tests
 # ---------------------------------------------------------------------------
 
+
 class TestLevelMeterSilence:
     """Tests for silence detection."""
 
@@ -75,9 +77,7 @@ class TestLevelMeterSilence:
         reading = meter.compute(silence_chunk)
         assert reading.level == AudioLevel.SILENT
 
-    def test_silence_rms_is_negative_infinity_or_very_low(
-        self, silence_chunk: np.ndarray
-    ) -> None:
+    def test_silence_rms_is_negative_infinity_or_very_low(self, silence_chunk: np.ndarray) -> None:
         meter = LevelMeter()
         reading = meter.compute(silence_chunk)
         # For true silence, rms_db should be -inf or very negative
@@ -87,16 +87,12 @@ class TestLevelMeterSilence:
 class TestLevelMeterQuiet:
     """Tests for quiet audio detection."""
 
-    def test_quiet_audio_classified_as_too_quiet(
-        self, quiet_chunk: np.ndarray
-    ) -> None:
+    def test_quiet_audio_classified_as_too_quiet(self, quiet_chunk: np.ndarray) -> None:
         meter = LevelMeter()
         reading = meter.compute(quiet_chunk)
         assert reading.level == AudioLevel.TOO_QUIET
 
-    def test_quiet_audio_rms_in_expected_range(
-        self, quiet_chunk: np.ndarray
-    ) -> None:
+    def test_quiet_audio_rms_in_expected_range(self, quiet_chunk: np.ndarray) -> None:
         meter = LevelMeter()
         reading = meter.compute(quiet_chunk)
         assert -60 <= reading.rms_db < -40
@@ -105,16 +101,12 @@ class TestLevelMeterQuiet:
 class TestLevelMeterNormal:
     """Tests for normal speaking level."""
 
-    def test_normal_sine_classified_as_ok(
-        self, sine_wave_chunk: np.ndarray
-    ) -> None:
+    def test_normal_sine_classified_as_ok(self, sine_wave_chunk: np.ndarray) -> None:
         meter = LevelMeter()
         reading = meter.compute(sine_wave_chunk)
         assert reading.level == AudioLevel.OK
 
-    def test_normal_sine_rms_in_expected_range(
-        self, sine_wave_chunk: np.ndarray
-    ) -> None:
+    def test_normal_sine_rms_in_expected_range(self, sine_wave_chunk: np.ndarray) -> None:
         meter = LevelMeter()
         reading = meter.compute(sine_wave_chunk)
         # 0.5 amplitude sine wave: RMS = 0.5/sqrt(2) ~ 0.354
@@ -125,9 +117,7 @@ class TestLevelMeterNormal:
 class TestLevelMeterLoud:
     """Tests for loud audio detection."""
 
-    def test_loud_audio_classified_as_loud_or_clipping(
-        self, loud_chunk: np.ndarray
-    ) -> None:
+    def test_loud_audio_classified_as_loud_or_clipping(self, loud_chunk: np.ndarray) -> None:
         meter = LevelMeter()
         reading = meter.compute(loud_chunk)
         # 0.99 amplitude: RMS ~ -3dB, should be LOUD or possibly CLIPPING
@@ -137,16 +127,12 @@ class TestLevelMeterLoud:
 class TestLevelMeterClipping:
     """Tests for clipping detection."""
 
-    def test_clipping_audio_classified_as_clipping(
-        self, clipping_chunk: np.ndarray
-    ) -> None:
+    def test_clipping_audio_classified_as_clipping(self, clipping_chunk: np.ndarray) -> None:
         meter = LevelMeter()
         reading = meter.compute(clipping_chunk)
         assert reading.level == AudioLevel.CLIPPING
 
-    def test_clipping_peak_near_zero_dbfs(
-        self, clipping_chunk: np.ndarray
-    ) -> None:
+    def test_clipping_peak_near_zero_dbfs(self, clipping_chunk: np.ndarray) -> None:
         meter = LevelMeter()
         reading = meter.compute(clipping_chunk)
         assert reading.peak_db >= -0.5
@@ -216,9 +202,7 @@ class TestLevelMeterEdgeCases:
         # peak is 1.0, so 20*log10(1.0) = 0 dBFS
         assert reading.peak_db == pytest.approx(0.0, abs=0.01)
 
-    def test_rms_db_for_silence_is_negative_infinity(
-        self, silence_chunk: np.ndarray
-    ) -> None:
+    def test_rms_db_for_silence_is_negative_infinity(self, silence_chunk: np.ndarray) -> None:
         """True silence (all zeros) should have rms_db = -inf."""
         meter = LevelMeter()
         reading = meter.compute(silence_chunk)

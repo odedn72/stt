@@ -95,11 +95,13 @@ class ShutdownManager:
         """
         fallback = str(getattr(callback, "__name__", repr(callback)))
         task_name: str = name if name is not None else fallback
-        self._tasks.append(_ShutdownTask(
-            priority=priority,
-            name=task_name,
-            callback=callback,
-        ))
+        self._tasks.append(
+            _ShutdownTask(
+                priority=priority,
+                name=task_name,
+                callback=callback,
+            )
+        )
         logger.debug("Registered shutdown task: %s (priority %d)", task_name, priority)
 
     def install_signal_handlers(self) -> None:

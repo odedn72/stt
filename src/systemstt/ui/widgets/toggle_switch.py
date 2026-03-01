@@ -79,7 +79,7 @@ class ToggleSwitch(QWidget):
 
     # --- Event handling ---
 
-    def mousePressEvent(self, event: object) -> None:  # type: ignore[override]  # noqa: N802
+    def mousePressEvent(self, event: object) -> None:  # noqa: N802
         if isinstance(event, QMouseEvent) and event.button() == Qt.MouseButton.LeftButton:
             self._on_click()
         super().mousePressEvent(event)  # type: ignore[arg-type]
@@ -88,7 +88,7 @@ class ToggleSwitch(QWidget):
         """Handle a click: toggle the checked state."""
         self.set_checked(not self._checked)
 
-    def paintEvent(self, event: object) -> None:  # type: ignore[override]  # noqa: N802
+    def paintEvent(self, event: object) -> None:  # noqa: N802
         """Paint the track and thumb."""
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)

@@ -11,19 +11,17 @@ Design spec reference: Section 5.
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 from PySide6.QtCore import (
     QPoint,
     QPropertyAnimation,
-    QTimer,
     Qt,
+    QTimer,
     Signal,
 )
 from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import (
     QGraphicsDropShadowEffect,
-    QGraphicsOpacityEffect,
     QHBoxLayout,
     QLabel,
     QVBoxLayout,
@@ -42,12 +40,12 @@ _DEFAULT_Y = 48
 class _RecordingDot(QWidget):
     """Pulsing recording dot indicator."""
 
-    def __init__(self, parent: Optional[QWidget] = None) -> None:
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setFixedSize(12, 12)
         self._color = QColor(TOKENS.accent)
         self._pulse_scale = 1.0
-        self._animation: Optional[QPropertyAnimation] = None
+        self._animation: QPropertyAnimation | None = None
 
     def set_color(self, color: str) -> None:
         """Set the dot color."""
@@ -74,7 +72,7 @@ class _RecordingDot(QWidget):
         self.setFixedSize(12, 12)
         self.update()
 
-    def paintEvent(self, event: object) -> None:  # type: ignore[override]
+    def paintEvent(self, event: object) -> None:  # noqa: N802
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.setBrush(self._color)
@@ -103,7 +101,7 @@ class FloatingPill(QWidget):
 
     position_changed = Signal(int, int)
 
-    def __init__(self, parent: Optional[QWidget] = None) -> None:
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
 
         self.setWindowFlags(
@@ -128,8 +126,8 @@ class FloatingPill(QWidget):
         self._has_expansion: bool = False
 
         # Drag state
-        self._drag_start_pos: Optional[QPoint] = None
-        self._window_start_pos: Optional[QPoint] = None
+        self._drag_start_pos: QPoint | None = None
+        self._window_start_pos: QPoint | None = None
 
         # Command confirmation auto-dismiss timer
         self._confirmation_timer = QTimer(self)
@@ -223,8 +221,7 @@ class FloatingPill(QWidget):
         mono_font.setPixelSize(TOKENS.text_sm)
         self._expansion_label.setFont(mono_font)
         self._expansion_label.setStyleSheet(
-            f"color: {TOKENS.text_primary}; background: transparent;"
-            " padding-top: 8px;"
+            f"color: {TOKENS.text_primary}; background: transparent; padding-top: 8px;"
         )
         expansion_layout.addWidget(self._expansion_label)
 
@@ -239,17 +236,22 @@ class FloatingPill(QWidget):
         shadow.setColor(QColor(0, 0, 0, 77))
         self.setGraphicsEffect(shadow)
 
-    def paintEvent(self, event: object) -> None:  # type: ignore[override]
+    def paintEvent(self, event: object) -> None:  # noqa: N802
         """Paint the translucent rounded background."""
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
         path = QPainterPath()
-        radius = float(TOKENS.border_radius_pill if not self._has_expansion
-                        else TOKENS.border_radius_lg)
+        radius = float(
+            TOKENS.border_radius_pill if not self._has_expansion else TOKENS.border_radius_lg
+        )
         path.addRoundedRect(
-            0.0, 0.0, float(self.width()), float(self.height()),
-            radius, radius,
+            0.0,
+            0.0,
+            float(self.width()),
+            float(self.height()),
+            radius,
+            radius,
         )
         painter.fillPath(path, QColor(26, 26, 46, 178))
         painter.setPen(QPen(QColor(TOKENS.border), 1))
@@ -402,7 +404,7 @@ class FloatingPill(QWidget):
 
     # --- Drag support ---
 
-    def mousePressEvent(self, event: object) -> None:  # type: ignore[override]
+    def mousePressEvent(self, event: object) -> None:  # noqa: N802
         from PySide6.QtGui import QMouseEvent
 
         if isinstance(event, QMouseEvent) and event.button() == Qt.MouseButton.LeftButton:
@@ -410,7 +412,7 @@ class FloatingPill(QWidget):
             self._window_start_pos = self.pos()
         super().mousePressEvent(event)  # type: ignore[arg-type]
 
-    def mouseMoveEvent(self, event: object) -> None:  # type: ignore[override]
+    def mouseMoveEvent(self, event: object) -> None:  # noqa: N802
         from PySide6.QtGui import QMouseEvent
 
         if (
@@ -422,7 +424,7 @@ class FloatingPill(QWidget):
             self.move(self._window_start_pos + delta)
         super().mouseMoveEvent(event)  # type: ignore[arg-type]
 
-    def mouseReleaseEvent(self, event: object) -> None:  # type: ignore[override]
+    def mouseReleaseEvent(self, event: object) -> None:  # noqa: N802
         from PySide6.QtGui import QMouseEvent
 
         if isinstance(event, QMouseEvent) and self._drag_start_pos is not None:

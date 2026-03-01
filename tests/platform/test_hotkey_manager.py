@@ -27,6 +27,7 @@ from systemstt.platform.macos.hotkey_manager import (
 # HotkeyBinding tests
 # ---------------------------------------------------------------------------
 
+
 class TestHotkeyBinding:
     """Tests for the HotkeyBinding data model."""
 
@@ -80,6 +81,7 @@ class TestHotkeyBinding:
 # HotkeyManager ABC tests
 # ---------------------------------------------------------------------------
 
+
 class TestHotkeyManagerABC:
     """Tests that HotkeyManager cannot be instantiated directly."""
 
@@ -91,6 +93,7 @@ class TestHotkeyManagerABC:
 # ---------------------------------------------------------------------------
 # Helpers for mocking the CGEventTap
 # ---------------------------------------------------------------------------
+
 
 class _QuartzMocks:
     """Container for mocked Quartz symbols, allowing tests to override."""
@@ -137,6 +140,7 @@ def _patch_quartz(mocks: _QuartzMocks | None = None) -> patch:  # type: ignore[t
 # ---------------------------------------------------------------------------
 # MacOSHotkeyManager tests
 # ---------------------------------------------------------------------------
+
 
 class TestMacOSHotkeyManagerRegistration:
     """Tests for hotkey registration."""
@@ -264,7 +268,8 @@ class TestMacOSHotkeyManagerErrors:
 
     def test_quartz_not_available_raises_error(self) -> None:
         with patch.object(
-            MacOSHotkeyManager, "_start_tap",
+            MacOSHotkeyManager,
+            "_start_tap",
             side_effect=HotkeyRegistrationError("Quartz framework not available"),
         ):
             manager = MacOSHotkeyManager()

@@ -10,9 +10,10 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Optional
+from typing import TYPE_CHECKING
 
-from systemstt.commands.registry import CommandRegistry, VoiceCommand
+if TYPE_CHECKING:
+    from systemstt.commands.registry import CommandRegistry, VoiceCommand
 
 
 @dataclass(frozen=True)
@@ -20,7 +21,7 @@ class ParseResult:
     """Result of parsing text for a voice command."""
 
     has_command: bool
-    command: Optional[VoiceCommand]
+    command: VoiceCommand | None
     text_before: str
     text_after: str
     matched_phrase: str
@@ -65,7 +66,7 @@ class CommandParser:
             )
 
         # Try to match commands
-        best_match: Optional[tuple[VoiceCommand, str, int]] = None
+        best_match: tuple[VoiceCommand, str, int] | None = None
         best_phrase_len = 0
 
         for cmd in self._registry.commands:
@@ -76,11 +77,10 @@ class CommandParser:
 
                 if cmd.standalone_only:
                     # Standalone-only: entire text must be the command
-                    if normalized == norm_phrase:
-                        if len(norm_phrase) > best_phrase_len:
-                            # match_start = index where command starts in cleaned text
-                            best_match = (cmd, phrase, 0)
-                            best_phrase_len = len(norm_phrase)
+                    if normalized == norm_phrase and len(norm_phrase) > best_phrase_len:
+                        # match_start = index where command starts in cleaned text
+                        best_match = (cmd, phrase, 0)
+                        best_phrase_len = len(norm_phrase)
                     continue
 
                 # Suffix matching: command at end of text

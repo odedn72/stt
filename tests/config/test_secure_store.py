@@ -16,13 +16,13 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from systemstt.config.secure import SecureStore
-from systemstt.platform.macos.keychain import MacOSKeychainStore
 from systemstt.errors import KeychainAccessError
-
+from systemstt.platform.macos.keychain import MacOSKeychainStore
 
 # ---------------------------------------------------------------------------
 # SecureStore ABC tests
 # ---------------------------------------------------------------------------
+
 
 class TestSecureStoreABC:
     """Tests that SecureStore cannot be instantiated directly."""
@@ -36,6 +36,7 @@ class TestSecureStoreABC:
 # MacOSKeychainStore service name
 # ---------------------------------------------------------------------------
 
+
 class TestMacOSKeychainStoreServiceName:
     """Tests for the keychain service name."""
 
@@ -47,14 +48,13 @@ class TestMacOSKeychainStoreServiceName:
 # MacOSKeychainStore.set tests
 # ---------------------------------------------------------------------------
 
+
 class TestMacOSKeychainStoreSet:
     """Tests for storing secrets in the keychain."""
 
     @patch("systemstt.platform.macos.keychain.SecItemAdd")
     @patch("systemstt.platform.macos.keychain.SecItemUpdate")
-    def test_set_stores_value(
-        self, mock_update: MagicMock, mock_add: MagicMock
-    ) -> None:
+    def test_set_stores_value(self, mock_update: MagicMock, mock_add: MagicMock) -> None:
         # SecItemUpdate returns non-zero (not found), so SecItemAdd is called
         mock_update.return_value = -25300  # errSecItemNotFound
         mock_add.return_value = 0  # success
@@ -64,9 +64,7 @@ class TestMacOSKeychainStoreSet:
 
     @patch("systemstt.platform.macos.keychain.SecItemAdd")
     @patch("systemstt.platform.macos.keychain.SecItemUpdate")
-    def test_set_updates_existing_value(
-        self, mock_update: MagicMock, mock_add: MagicMock
-    ) -> None:
+    def test_set_updates_existing_value(self, mock_update: MagicMock, mock_add: MagicMock) -> None:
         mock_update.return_value = 0  # success (item existed, was updated)
         store = MacOSKeychainStore()
         store.set("openai_api_key", "sk-new-key")
@@ -86,6 +84,7 @@ class TestMacOSKeychainStoreSet:
 # MacOSKeychainStore.get tests
 # ---------------------------------------------------------------------------
 
+
 class TestMacOSKeychainStoreGet:
     """Tests for retrieving secrets from the keychain."""
 
@@ -104,9 +103,7 @@ class TestMacOSKeychainStoreGet:
         assert value is None
 
     @patch("systemstt.platform.macos.keychain.SecItemCopyMatching")
-    def test_get_raises_keychain_access_error_on_failure(
-        self, mock_copy: MagicMock
-    ) -> None:
+    def test_get_raises_keychain_access_error_on_failure(self, mock_copy: MagicMock) -> None:
         mock_copy.side_effect = Exception("Keychain locked")
         store = MacOSKeychainStore()
         with pytest.raises(KeychainAccessError):
@@ -116,6 +113,7 @@ class TestMacOSKeychainStoreGet:
 # ---------------------------------------------------------------------------
 # MacOSKeychainStore.delete tests
 # ---------------------------------------------------------------------------
+
 
 class TestMacOSKeychainStoreDelete:
     """Tests for deleting secrets from the keychain."""
@@ -137,6 +135,7 @@ class TestMacOSKeychainStoreDelete:
 # ---------------------------------------------------------------------------
 # MacOSKeychainStore.exists tests
 # ---------------------------------------------------------------------------
+
 
 class TestMacOSKeychainStoreExists:
     """Tests for checking if a key exists."""

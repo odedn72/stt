@@ -13,7 +13,10 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from enum import Enum, auto
-from typing import Callable, Optional
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +38,7 @@ class StateTransition:
     from_state: DictationState
     to_state: DictationState
     trigger: str
-    error: Optional[Exception] = None
+    error: Exception | None = None
 
 
 # Valid state transitions: maps from_state -> set of allowed to_states
@@ -64,7 +67,7 @@ class DictationStateMachine:
 
     def __init__(self) -> None:
         self._state: DictationState = DictationState.IDLE
-        self._on_state_changed: Optional[Callable[[StateTransition], None]] = None
+        self._on_state_changed: Callable[[StateTransition], None] | None = None
 
     @property
     def state(self) -> DictationState:
@@ -72,14 +75,12 @@ class DictationStateMachine:
         return self._state
 
     @property
-    def on_state_changed(self) -> Optional[Callable[[StateTransition], None]]:
+    def on_state_changed(self) -> Callable[[StateTransition], None] | None:
         """Callback invoked on every state change."""
         return self._on_state_changed
 
     @on_state_changed.setter
-    def on_state_changed(
-        self, callback: Optional[Callable[[StateTransition], None]]
-    ) -> None:
+    def on_state_changed(self, callback: Callable[[StateTransition], None] | None) -> None:
         """Set the callback for state changes."""
         self._on_state_changed = callback
 
@@ -87,7 +88,7 @@ class DictationStateMachine:
         self,
         new_state: DictationState,
         trigger: str,
-        error: Optional[Exception] = None,
+        error: Exception | None = None,
     ) -> None:
         """Attempt a state transition.
 
@@ -101,8 +102,7 @@ class DictationStateMachine:
         """
         if not self.can_transition_to(new_state):
             raise ValueError(
-                f"Invalid transition: {self._state.name} -> {new_state.name} "
-                f"(trigger: {trigger})"
+                f"Invalid transition: {self._state.name} -> {new_state.name} (trigger: {trigger})"
             )
 
         old_state = self._state

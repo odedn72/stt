@@ -18,27 +18,26 @@ import httpx
 import numpy as np
 import pytest
 
+from systemstt.errors import (
+    APIAuthenticationError,
+    APIRateLimitError,
+    APITimeoutError,
+    APIUnavailableError,
+    CloudAPIError,
+    STTEngineError,
+)
 from systemstt.stt.base import (
     DetectedLanguage,
     EngineState,
     EngineType,
     TranscriptionResult,
 )
-from systemstt.stt.cloud_api import CloudAPIEngine, CloudAPIConfig
-from systemstt.errors import (
-    APIAuthenticationError,
-    APITimeoutError,
-    APIRateLimitError,
-    APIUnavailableError,
-    CloudAPIError,
-    STTEngineError,
-    TranscriptionError,
-)
-
+from systemstt.stt.cloud_api import CloudAPIConfig, CloudAPIEngine
 
 # ---------------------------------------------------------------------------
 # CloudAPIConfig tests
 # ---------------------------------------------------------------------------
+
 
 class TestCloudAPIConfig:
     """Tests for CloudAPIConfig dataclass."""
@@ -78,6 +77,7 @@ class TestCloudAPIConfig:
 # ---------------------------------------------------------------------------
 # CloudAPIEngine lifecycle tests
 # ---------------------------------------------------------------------------
+
 
 class TestCloudAPIEngineLifecycle:
     """Tests for engine initialization and shutdown."""
@@ -128,6 +128,7 @@ class TestCloudAPIEngineLifecycle:
 # CloudAPIEngine transcription tests
 # ---------------------------------------------------------------------------
 
+
 class TestCloudAPIEngineTranscribe:
     """Tests for cloud API transcription."""
 
@@ -142,10 +143,7 @@ class TestCloudAPIEngineTranscribe:
         mock_response.json.return_value = {
             "text": "Hello world",
             "language": "en",
-            "segments": [
-                {"text": "Hello world", "start": 0.0, "end": 1.5,
-                 "avg_logprob": -0.2}
-            ],
+            "segments": [{"text": "Hello world", "start": 0.0, "end": 1.5, "avg_logprob": -0.2}],
         }
         mock_response.raise_for_status = MagicMock()
 
@@ -273,8 +271,12 @@ class TestCloudAPIEngineTranscribe:
             "text": "\u05e9\u05dc\u05d5\u05dd \u05e2\u05d5\u05dc\u05dd",
             "language": "he",
             "segments": [
-                {"text": "\u05e9\u05dc\u05d5\u05dd \u05e2\u05d5\u05dc\u05dd",
-                 "start": 0.0, "end": 1.2, "avg_logprob": -0.3}
+                {
+                    "text": "\u05e9\u05dc\u05d5\u05dd \u05e2\u05d5\u05dc\u05dd",
+                    "start": 0.0,
+                    "end": 1.2,
+                    "avg_logprob": -0.3,
+                }
             ],
         }
         mock_response.raise_for_status = MagicMock()
@@ -297,6 +299,7 @@ class TestCloudAPIEngineTranscribe:
 # ---------------------------------------------------------------------------
 # CloudAPIEngine API key validation tests
 # ---------------------------------------------------------------------------
+
 
 class TestCloudAPIEngineValidation:
     """Tests for API key validation."""
@@ -342,6 +345,7 @@ class TestCloudAPIEngineValidation:
 # CloudAPIEngine retry logic tests
 # ---------------------------------------------------------------------------
 
+
 class TestCloudAPIEngineRetry:
     """Tests for retry behavior per spec section 5.3."""
 
@@ -378,7 +382,8 @@ class TestCloudAPIEngineRetry:
         mock_response_ok = MagicMock()
         mock_response_ok.status_code = 200
         mock_response_ok.json.return_value = {
-            "text": "success", "language": "en",
+            "text": "success",
+            "language": "en",
             "segments": [{"text": "success", "start": 0.0, "end": 1.0, "avg_logprob": -0.1}],
         }
         mock_response_ok.raise_for_status = MagicMock()
@@ -393,9 +398,7 @@ class TestCloudAPIEngineRetry:
         mock_client.__aexit__ = AsyncMock(return_value=None)
         mock_client_cls.return_value = mock_client
 
-        config = CloudAPIConfig(
-            api_key="sk-test", max_retries=3, retry_delay_seconds=0.01
-        )
+        config = CloudAPIConfig(api_key="sk-test", max_retries=3, retry_delay_seconds=0.01)
         engine = CloudAPIEngine(config)
         await engine.initialize()
 
@@ -406,6 +409,7 @@ class TestCloudAPIEngineRetry:
 # ---------------------------------------------------------------------------
 # CloudAPIEngine edge case tests
 # ---------------------------------------------------------------------------
+
 
 class TestCloudAPIEngineEdgeCases:
     """Edge case tests for the cloud API engine."""
@@ -478,7 +482,8 @@ class TestCloudAPIEngineEdgeCases:
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {
-            "text": "test", "language": "en",
+            "text": "test",
+            "language": "en",
             "segments": [{"text": "test", "start": 0.0, "end": 1.0, "avg_logprob": -0.1}],
         }
         mock_response.raise_for_status = MagicMock()
@@ -551,6 +556,7 @@ class TestCloudAPIEngineEdgeCases:
     def test_parse_language_unknown_returns_unknown(self) -> None:
         """Unknown language strings should map to DetectedLanguage.UNKNOWN."""
         from systemstt.stt.cloud_api import _parse_language
+
         assert _parse_language("fr") == DetectedLanguage.UNKNOWN
         assert _parse_language("unknown") == DetectedLanguage.UNKNOWN
         assert _parse_language("") == DetectedLanguage.UNKNOWN
@@ -558,6 +564,7 @@ class TestCloudAPIEngineEdgeCases:
     def test_parse_language_english_variants(self) -> None:
         """Both 'en' and 'english' should map to ENGLISH."""
         from systemstt.stt.cloud_api import _parse_language
+
         assert _parse_language("en") == DetectedLanguage.ENGLISH
         assert _parse_language("English") == DetectedLanguage.ENGLISH
         assert _parse_language("EN") == DetectedLanguage.ENGLISH
@@ -565,6 +572,7 @@ class TestCloudAPIEngineEdgeCases:
     def test_parse_language_hebrew_variants(self) -> None:
         """Both 'he' and 'hebrew' should map to HEBREW."""
         from systemstt.stt.cloud_api import _parse_language
+
         assert _parse_language("he") == DetectedLanguage.HEBREW
         assert _parse_language("Hebrew") == DetectedLanguage.HEBREW
         assert _parse_language("HE") == DetectedLanguage.HEBREW
@@ -572,6 +580,7 @@ class TestCloudAPIEngineEdgeCases:
     def test_audio_to_wav_bytes_produces_valid_wav_header(self) -> None:
         """The WAV conversion should produce valid RIFF/WAVE header."""
         from systemstt.stt.cloud_api import _audio_to_wav_bytes
+
         audio = np.zeros(160, dtype=np.float32)
         wav = _audio_to_wav_bytes(audio, sample_rate=16000)
         assert wav[:4] == b"RIFF"
@@ -582,6 +591,7 @@ class TestCloudAPIEngineEdgeCases:
     def test_audio_to_wav_bytes_length_is_correct(self) -> None:
         """WAV file size should be 44 (header) + num_samples * 2 (int16)."""
         from systemstt.stt.cloud_api import _audio_to_wav_bytes
+
         num_samples = 1000
         audio = np.zeros(num_samples, dtype=np.float32)
         wav = _audio_to_wav_bytes(audio)
@@ -592,6 +602,7 @@ class TestCloudAPIEngineEdgeCases:
 # ---------------------------------------------------------------------------
 # CloudAPIEngine accuracy parameter tests
 # ---------------------------------------------------------------------------
+
 
 class TestCloudAPIEngineAccuracyParams:
     """Tests for temperature and other accuracy parameters."""
@@ -605,7 +616,8 @@ class TestCloudAPIEngineAccuracyParams:
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {
-            "text": "test", "language": "en",
+            "text": "test",
+            "language": "en",
             "segments": [{"text": "test", "start": 0.0, "end": 1.0, "avg_logprob": -0.1}],
         }
         mock_response.raise_for_status = MagicMock()
@@ -635,7 +647,8 @@ class TestCloudAPIEngineAccuracyParams:
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {
-            "text": "test", "language": "en",
+            "text": "test",
+            "language": "en",
             "segments": [{"text": "test", "start": 0.0, "end": 1.0, "avg_logprob": -0.1}],
         }
         mock_response.raise_for_status = MagicMock()
@@ -664,7 +677,8 @@ class TestCloudAPIEngineAccuracyParams:
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {
-            "text": "continued text", "language": "en",
+            "text": "continued text",
+            "language": "en",
             "segments": [{"text": "continued text", "start": 0.0, "end": 1.0, "avg_logprob": -0.1}],
         }
         mock_response.raise_for_status = MagicMock()

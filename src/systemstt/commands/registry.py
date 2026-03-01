@@ -8,11 +8,14 @@ contains the 9 commands from MRD FR-007.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import Enum
-from typing import Optional, Sequence
+from enum import StrEnum
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 
-class CommandAction(str, Enum):
+class CommandAction(StrEnum):
     """Actions that voice commands can trigger."""
 
     DELETE_LAST_WORD = "delete_last_word"
@@ -110,7 +113,7 @@ class CommandRegistry:
         """Return all registered commands."""
         return self._commands
 
-    def get_command_by_action(self, action: CommandAction) -> Optional[VoiceCommand]:
+    def get_command_by_action(self, action: CommandAction) -> VoiceCommand | None:
         """Find a command by its action. Returns None if not found."""
         for cmd in self._commands:
             if cmd.action == action:

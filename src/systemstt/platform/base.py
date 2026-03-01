@@ -10,15 +10,18 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from enum import Enum
-from typing import Callable, Sequence
+from enum import StrEnum
+from typing import TYPE_CHECKING
 
+if TYPE_CHECKING:
+    from collections.abc import Callable, Sequence
 
 # ---------------------------------------------------------------------------
 # Key enums (shared by all platforms)
 # ---------------------------------------------------------------------------
 
-class KeyModifier(str, Enum):
+
+class KeyModifier(StrEnum):
     """Keyboard modifier keys."""
 
     COMMAND = "command"
@@ -27,7 +30,7 @@ class KeyModifier(str, Enum):
     CONTROL = "control"
 
 
-class SpecialKey(str, Enum):
+class SpecialKey(StrEnum):
     """Special (non-character) keys."""
 
     RETURN = "return"
@@ -105,7 +108,7 @@ class HotkeyBinding:
             for symbol, mod in symbol_to_mod.items():
                 if remaining.startswith(symbol):
                     modifiers.add(mod)
-                    remaining = remaining[len(symbol):]
+                    remaining = remaining[len(symbol) :]
                     found = True
                     break
             if not found:
@@ -124,6 +127,7 @@ DEFAULT_HOTKEY = HotkeyBinding(key="space", modifiers=frozenset({"option"}))
 # ---------------------------------------------------------------------------
 # TextInjector ABC
 # ---------------------------------------------------------------------------
+
 
 class TextInjector(ABC):
     """Abstract interface for injecting text into the focused application."""
@@ -156,6 +160,7 @@ class TextInjector(ABC):
 # ---------------------------------------------------------------------------
 # HotkeyManager ABC
 # ---------------------------------------------------------------------------
+
 
 class HotkeyManager(ABC):
     """Abstract interface for global hotkey registration."""

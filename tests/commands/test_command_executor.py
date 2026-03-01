@@ -10,14 +10,17 @@ All platform services (TextInjector) are mocked. Tests verify:
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, call
+from typing import TYPE_CHECKING
 
 import pytest
 
+if TYPE_CHECKING:
+    from unittest.mock import MagicMock
+
 from systemstt.commands.executor import CommandExecutor
 from systemstt.commands.registry import CommandAction
-from systemstt.platform.base import SpecialKey, KeyModifier
 from systemstt.errors import TextInjectionError
+from systemstt.platform.base import SpecialKey
 
 
 @pytest.fixture
@@ -35,6 +38,7 @@ def executor(
 # ---------------------------------------------------------------------------
 # DELETE_LAST_WORD tests
 # ---------------------------------------------------------------------------
+
 
 class TestExecutorDeleteLastWord:
     """Tests for the delete last word action (Option+Backspace on macOS)."""
@@ -62,6 +66,7 @@ class TestExecutorDeleteLastWord:
 # DELETE_LAST_SENTENCE tests
 # ---------------------------------------------------------------------------
 
+
 class TestExecutorDeleteLastSentence:
     """Tests for the delete last sentence action."""
 
@@ -78,6 +83,7 @@ class TestExecutorDeleteLastSentence:
 # UNDO tests
 # ---------------------------------------------------------------------------
 
+
 class TestExecutorUndo:
     """Tests for the undo action (Cmd+Z on macOS)."""
 
@@ -93,6 +99,7 @@ class TestExecutorUndo:
 # NEW_LINE tests
 # ---------------------------------------------------------------------------
 
+
 class TestExecutorNewLine:
     """Tests for the new line action (Return key)."""
 
@@ -107,6 +114,7 @@ class TestExecutorNewLine:
 # ---------------------------------------------------------------------------
 # NEW_PARAGRAPH tests
 # ---------------------------------------------------------------------------
+
 
 class TestExecutorNewParagraph:
     """Tests for the new paragraph action (Return twice)."""
@@ -124,6 +132,7 @@ class TestExecutorNewParagraph:
 # SELECT_ALL tests
 # ---------------------------------------------------------------------------
 
+
 class TestExecutorSelectAll:
     """Tests for the select all action (Cmd+A on macOS)."""
 
@@ -138,6 +147,7 @@ class TestExecutorSelectAll:
 # ---------------------------------------------------------------------------
 # COPY tests
 # ---------------------------------------------------------------------------
+
 
 class TestExecutorCopy:
     """Tests for the copy action (Cmd+C on macOS)."""
@@ -154,6 +164,7 @@ class TestExecutorCopy:
 # PASTE tests
 # ---------------------------------------------------------------------------
 
+
 class TestExecutorPaste:
     """Tests for the paste action (Cmd+V on macOS)."""
 
@@ -168,6 +179,7 @@ class TestExecutorPaste:
 # ---------------------------------------------------------------------------
 # STOP_DICTATION tests
 # ---------------------------------------------------------------------------
+
 
 class TestExecutorStopDictation:
     """Tests for the stop dictation command (per spec 6.5: internal signal, not keystroke)."""
@@ -197,6 +209,7 @@ class TestExecutorStopDictation:
 # ---------------------------------------------------------------------------
 # Error handling tests
 # ---------------------------------------------------------------------------
+
 
 class TestExecutorErrorHandling:
     """Tests for error propagation."""

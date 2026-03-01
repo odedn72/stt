@@ -16,8 +16,8 @@ from __future__ import annotations
 
 import pytest
 
-from systemstt.commands.parser import CommandParser, ParseResult
-from systemstt.commands.registry import CommandRegistry, CommandAction
+from systemstt.commands.parser import CommandParser
+from systemstt.commands.registry import CommandAction, CommandRegistry
 
 
 @pytest.fixture
@@ -30,6 +30,7 @@ def parser() -> CommandParser:
 # ---------------------------------------------------------------------------
 # Basic matching tests
 # ---------------------------------------------------------------------------
+
 
 class TestCommandParserBasicMatching:
     """Tests for basic command matching."""
@@ -68,6 +69,7 @@ class TestCommandParserBasicMatching:
 # Case insensitivity tests
 # ---------------------------------------------------------------------------
 
+
 class TestCommandParserCaseInsensitivity:
     """Tests for case-insensitive matching."""
 
@@ -91,6 +93,7 @@ class TestCommandParserCaseInsensitivity:
 # ---------------------------------------------------------------------------
 # Punctuation handling tests
 # ---------------------------------------------------------------------------
+
 
 class TestCommandParserPunctuation:
     """Tests for punctuation stripping."""
@@ -116,6 +119,7 @@ class TestCommandParserPunctuation:
 # Whitespace normalization tests
 # ---------------------------------------------------------------------------
 
+
 class TestCommandParserWhitespace:
     """Tests for whitespace normalization."""
 
@@ -135,6 +139,7 @@ class TestCommandParserWhitespace:
 # ---------------------------------------------------------------------------
 # Standalone vs suffix matching tests
 # ---------------------------------------------------------------------------
+
 
 class TestCommandParserStandaloneVsSuffix:
     """Tests for standalone vs suffix matching per spec section 6.2.
@@ -188,6 +193,7 @@ class TestCommandParserStandaloneVsSuffix:
 # Command NOT in the middle of text
 # ---------------------------------------------------------------------------
 
+
 class TestCommandParserBoundaryDetection:
     """Commands in the middle of text should not match."""
 
@@ -205,6 +211,7 @@ class TestCommandParserBoundaryDetection:
 # ---------------------------------------------------------------------------
 # All built-in commands matching tests
 # ---------------------------------------------------------------------------
+
 
 class TestCommandParserAllCommands:
     """Test that every built-in command trigger phrase is recognized."""
@@ -244,6 +251,7 @@ class TestCommandParserAllCommands:
 # Enabled/disabled toggle tests
 # ---------------------------------------------------------------------------
 
+
 class TestCommandParserEnabledToggle:
     """Tests for the enabled/disabled toggle."""
 
@@ -265,6 +273,7 @@ class TestCommandParserEnabledToggle:
 # ---------------------------------------------------------------------------
 # ParseResult data model tests
 # ---------------------------------------------------------------------------
+
 
 class TestParseResult:
     """Tests for the ParseResult dataclass."""
@@ -288,6 +297,7 @@ class TestParseResult:
 # ---------------------------------------------------------------------------
 # Edge cases
 # ---------------------------------------------------------------------------
+
 
 class TestCommandParserEdgeCases:
     """Edge case tests for the parser."""

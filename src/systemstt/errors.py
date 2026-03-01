@@ -32,10 +32,10 @@ Hierarchy:
 
 from __future__ import annotations
 
-
 # ---------------------------------------------------------------------------
 # Base error
 # ---------------------------------------------------------------------------
+
 
 class SystemSTTError(Exception):
     """Root exception for all SystemSTT errors."""
@@ -44,6 +44,7 @@ class SystemSTTError(Exception):
 # ---------------------------------------------------------------------------
 # Audio errors
 # ---------------------------------------------------------------------------
+
 
 class AudioError(SystemSTTError):
     """Base exception for audio capture errors."""
@@ -64,6 +65,7 @@ class AudioCaptureError(AudioError):
 # ---------------------------------------------------------------------------
 # STT Engine errors
 # ---------------------------------------------------------------------------
+
 
 class STTEngineError(SystemSTTError):
     """Base exception for STT engine errors."""
@@ -105,6 +107,7 @@ class APIUnavailableError(CloudAPIError):
 # Text injection errors
 # ---------------------------------------------------------------------------
 
+
 class TextInjectionError(SystemSTTError):
     """Base exception for text injection errors."""
 
@@ -121,6 +124,7 @@ class InjectionFailedError(TextInjectionError):
 # Hotkey errors
 # ---------------------------------------------------------------------------
 
+
 class HotkeyError(SystemSTTError):
     """Base exception for hotkey errors."""
 
@@ -132,6 +136,7 @@ class HotkeyRegistrationError(HotkeyError):
 # ---------------------------------------------------------------------------
 # Configuration errors
 # ---------------------------------------------------------------------------
+
 
 class ConfigurationError(SystemSTTError):
     """Base exception for configuration errors."""

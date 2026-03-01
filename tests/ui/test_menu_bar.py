@@ -12,14 +12,12 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from systemstt.ui.menu_bar import MenuBarWidget
-
 
 # ---------------------------------------------------------------------------
 # State tests
 # ---------------------------------------------------------------------------
+
 
 class TestMenuBarWidgetStates:
     """Tests for menu bar state transitions."""
@@ -50,6 +48,7 @@ class TestMenuBarWidgetStates:
 # Language label tests
 # ---------------------------------------------------------------------------
 
+
 class TestMenuBarWidgetLanguageLabel:
     """Tests for the language label display."""
 
@@ -69,6 +68,7 @@ class TestMenuBarWidgetLanguageLabel:
 # ---------------------------------------------------------------------------
 # Dropdown status update tests
 # ---------------------------------------------------------------------------
+
 
 class TestMenuBarWidgetDropdownStatus:
     """Tests for dropdown menu dynamic content."""
@@ -97,6 +97,7 @@ class TestMenuBarWidgetDropdownStatus:
 # ---------------------------------------------------------------------------
 # Signal tests
 # ---------------------------------------------------------------------------
+
 
 class TestMenuBarWidgetSignals:
     """Tests that required signals are defined."""

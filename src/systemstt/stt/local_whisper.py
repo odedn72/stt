@@ -12,14 +12,15 @@ import asyncio
 import logging
 import math
 import time
-from collections.abc import AsyncIterator
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator, Callable
 
 import numpy as np
-
 from faster_whisper import WhisperModel  # type: ignore[import-untyped]
 
 from systemstt.errors import (
@@ -40,7 +41,7 @@ from systemstt.stt.base import (
 logger = logging.getLogger(__name__)
 
 
-class WhisperModelSize(str, Enum):
+class WhisperModelSize(StrEnum):
     """Available Whisper model sizes."""
 
     TINY = "tiny"
@@ -77,7 +78,7 @@ class LocalWhisperEngine(STTEngine):
     def __init__(self, config: LocalWhisperConfig) -> None:
         self._config = config
         self._state = EngineState.UNINITIALIZED
-        self._model: Optional[WhisperModel] = None
+        self._model: WhisperModel | None = None
 
     @property
     def engine_type(self) -> EngineType:
@@ -96,9 +97,7 @@ class LocalWhisperEngine(STTEngine):
         try:
             # Run model loading in a thread to avoid blocking
             loop = asyncio.get_event_loop()
-            self._model = await loop.run_in_executor(
-                None, self._load_model
-            )
+            self._model = await loop.run_in_executor(None, self._load_model)
             self._state = EngineState.READY
             logger.info(
                 "LocalWhisperEngine initialized (model=%s, compute=%s)",
@@ -132,18 +131,16 @@ class LocalWhisperEngine(STTEngine):
 
     async def transcribe(
         self,
-        audio: np.ndarray,
-        language_hint: Optional[DetectedLanguage] = None,
-        context_prompt: Optional[str] = None,
+        audio: np.ndarray,  # type: ignore[type-arg]
+        language_hint: DetectedLanguage | None = None,
+        context_prompt: str | None = None,
     ) -> TranscriptionResult:
         """Transcribe audio using the local Whisper model.
 
         Raises STTEngineError if not initialized, TranscriptionError on failure.
         """
         if self._state != EngineState.READY or self._model is None:
-            raise STTEngineError(
-                "LocalWhisperEngine is not initialized. Call initialize() first."
-            )
+            raise STTEngineError("LocalWhisperEngine is not initialized. Call initialize() first.")
 
         self._state = EngineState.TRANSCRIBING
         start_time = time.monotonic()
@@ -159,6 +156,7 @@ class LocalWhisperEngine(STTEngine):
             language = _parse_language(info.language)
 
             # If a language hint was provided, use it as primary language
+            primary_language: DetectedLanguage
             if language_hint is not None and language_hint != DetectedLanguage.UNKNOWN:
                 primary_language = language_hint
             else:
@@ -193,9 +191,7 @@ class LocalWhisperEngine(STTEngine):
         except (STTEngineError, TranscriptionError):
             raise
         except Exception as exc:
-            raise TranscriptionError(
-                f"Transcription failed: {exc}"
-            ) from exc
+            raise TranscriptionError(f"Transcription failed: {exc}") from exc
         finally:
             if self._state == EngineState.TRANSCRIBING:
                 self._state = EngineState.READY
@@ -205,9 +201,9 @@ class LocalWhisperEngine(STTEngine):
 
     async def transcribe_stream(
         self,
-        audio_stream: AsyncIterator[np.ndarray],
+        audio_stream: AsyncIterator[np.ndarray],  # type: ignore[type-arg]
         *,
-        language_hint: Optional[DetectedLanguage] = None,
+        language_hint: DetectedLanguage | None = None,
     ) -> AsyncIterator[TranscriptionResult]:
         """Stream-transcribe audio by buffering chunks and transcribing periodically.
 
@@ -231,11 +227,9 @@ class LocalWhisperEngine(STTEngine):
             STTEngineError: If the engine is not in READY state.
         """
         if self._state != EngineState.READY or self._model is None:
-            raise STTEngineError(
-                "LocalWhisperEngine is not initialized. Call initialize() first."
-            )
+            raise STTEngineError("LocalWhisperEngine is not initialized. Call initialize() first.")
 
-        buffer_chunks: list[np.ndarray] = []
+        buffer_chunks: list[np.ndarray] = []  # type: ignore[type-arg]
         buffered_samples = 0
 
         async for chunk in audio_stream:
@@ -276,9 +270,9 @@ class LocalWhisperEngine(STTEngine):
 
     def _do_transcribe(
         self,
-        audio: np.ndarray,
-        language_hint: Optional[DetectedLanguage],
-        context_prompt: Optional[str] = None,
+        audio: np.ndarray,  # type: ignore[type-arg]
+        language_hint: DetectedLanguage | None,
+        context_prompt: str | None = None,
     ) -> tuple[list[Any], Any]:
         """Run transcription synchronously (called in thread)."""
         assert self._model is not None
@@ -319,7 +313,7 @@ class LocalWhisperEngine(STTEngine):
 
     async def download_model(
         self,
-        on_progress: Optional[Callable[[float], None]] = None,
+        on_progress: Callable[[float], None] | None = None,
     ) -> None:
         """Download the Whisper model.
 
@@ -338,7 +332,7 @@ class LocalWhisperEngine(STTEngine):
 
     def _download_model_sync(
         self,
-        on_progress: Optional[Callable[[float], None]],
+        on_progress: Callable[[float], None] | None,
     ) -> None:
         """Download model synchronously (runs in thread)."""
         # faster-whisper downloads the model on first use

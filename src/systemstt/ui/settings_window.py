@@ -13,7 +13,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QPoint, Qt, Signal
 from PySide6.QtGui import QColor, QMouseEvent, QPainter, QPainterPath
 from PySide6.QtWidgets import (
     QGraphicsDropShadowEffect,
@@ -55,8 +55,8 @@ class _TitleBar(QWidget):
     def __init__(self, title: str, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setFixedHeight(40)
-        self._drag_start = None
-        self._window_start = None
+        self._drag_start: QPoint | None = None
+        self._window_start: QPoint | None = None
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(16, 0, 8, 0)
@@ -87,7 +87,7 @@ class _TitleBar(QWidget):
         close_btn.clicked.connect(self.close_requested)
         layout.addWidget(close_btn)
 
-    def mousePressEvent(self, event: object) -> None:  # type: ignore[override]  # noqa: N802
+    def mousePressEvent(self, event: object) -> None:  # noqa: N802
         if isinstance(event, QMouseEvent) and event.button() == Qt.MouseButton.LeftButton:
             self._drag_start = event.globalPosition().toPoint()
             win = self.window()
@@ -95,7 +95,7 @@ class _TitleBar(QWidget):
                 self._window_start = win.pos()
         super().mousePressEvent(event)  # type: ignore[arg-type]
 
-    def mouseMoveEvent(self, event: object) -> None:  # type: ignore[override]  # noqa: N802
+    def mouseMoveEvent(self, event: object) -> None:  # noqa: N802
         if (
             isinstance(event, QMouseEvent)
             and self._drag_start is not None
@@ -107,7 +107,7 @@ class _TitleBar(QWidget):
                 win.move(self._window_start + delta)
         super().mouseMoveEvent(event)  # type: ignore[arg-type]
 
-    def mouseReleaseEvent(self, event: object) -> None:  # type: ignore[override]  # noqa: N802
+    def mouseReleaseEvent(self, event: object) -> None:  # noqa: N802
         self._drag_start = None
         self._window_start = None
         super().mouseReleaseEvent(event)  # type: ignore[arg-type]
@@ -267,7 +267,7 @@ class SettingsWindow(QWidget):
         shadow.setColor(QColor(0, 0, 0, 102))
         self.setGraphicsEffect(shadow)
 
-    def paintEvent(self, event: object) -> None:  # type: ignore[override]  # noqa: N802
+    def paintEvent(self, event: object) -> None:  # noqa: N802
         """Paint the solid dark background with rounded corners."""
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -284,7 +284,7 @@ class SettingsWindow(QWidget):
         painter.fillPath(path, QColor(TOKENS.bg_solid))
         painter.end()
 
-    def showEvent(self, event: object) -> None:  # type: ignore[override]  # noqa: N802
+    def showEvent(self, event: object) -> None:  # noqa: N802
         """Center the window on screen when shown."""
         screen = self.screen()
         if screen is not None:

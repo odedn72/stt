@@ -33,10 +33,10 @@ try:
     )
 except ImportError:
     # Allow importing on non-macOS for testing with mocks
-    SecItemAdd = None  # type: ignore[assignment]
-    SecItemCopyMatching = None  # type: ignore[assignment]
-    SecItemUpdate = None  # type: ignore[assignment]
-    SecItemDelete = None  # type: ignore[assignment]
+    SecItemAdd = None
+    SecItemCopyMatching = None
+    SecItemUpdate = None
+    SecItemDelete = None
 
 # Keychain error codes
 _ERR_SEC_SUCCESS = 0
@@ -82,13 +82,14 @@ class MacOSKeychainStore(SecureStore):
 
             if isinstance(data, bytes):
                 return data.decode("utf-8")
-            return str(data)
+            # NSData/CFData from Security framework — convert to bytes first
+            if hasattr(data, "bytes"):
+                return bytes(data).decode("utf-8")
+            return bytes(data).decode("utf-8")
         except KeychainAccessError:
             raise
         except Exception as exc:
-            raise KeychainAccessError(
-                f"Failed to access Keychain for key '{key}': {exc}"
-            ) from exc
+            raise KeychainAccessError(f"Failed to access Keychain for key '{key}': {exc}") from exc
 
     def set(self, key: str, value: str) -> None:
         """Store a secret in the Keychain.
@@ -110,16 +111,16 @@ class MacOSKeychainStore(SecureStore):
             # Item doesn't exist yet, add it
             add_attrs = dict(query)
             add_attrs[kSecValueData] = value_data
-            add_status = SecItemAdd(add_attrs, None)
+            result = SecItemAdd(add_attrs, None)
+            # SecItemAdd returns (status, item_ref) tuple
+            add_status = result[0] if isinstance(result, tuple) else result
             if add_status != _ERR_SEC_SUCCESS:
                 raise KeychainAccessError(
                     f"Failed to store key '{key}' in Keychain (status={add_status})"
                 )
             return
 
-        raise KeychainAccessError(
-            f"Failed to update key '{key}' in Keychain (status={status})"
-        )
+        raise KeychainAccessError(f"Failed to update key '{key}' in Keychain (status={status})")
 
     def delete(self, key: str) -> None:
         """Delete a secret from the Keychain.
@@ -132,9 +133,7 @@ class MacOSKeychainStore(SecureStore):
         if status in (_ERR_SEC_SUCCESS, _ERR_SEC_ITEM_NOT_FOUND):
             return
 
-        raise KeychainAccessError(
-            f"Failed to delete key '{key}' from Keychain (status={status})"
-        )
+        raise KeychainAccessError(f"Failed to delete key '{key}' from Keychain (status={status})")
 
     def exists(self, key: str) -> bool:
         """Check if a key exists in the Keychain."""
@@ -144,6 +143,6 @@ class MacOSKeychainStore(SecureStore):
             query[kSecMatchLimit] = kSecMatchLimitOne
 
             status, _data = SecItemCopyMatching(query, None)
-            return status == _ERR_SEC_SUCCESS
+            return bool(status == _ERR_SEC_SUCCESS)
         except Exception:
             return False

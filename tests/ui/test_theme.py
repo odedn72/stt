@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import pytest
 
-from systemstt.ui.theme import DesignTokens, TOKENS, generate_qss
+from systemstt.ui.theme import TOKENS, DesignTokens, generate_qss
 
 
 class TestDesignTokens:

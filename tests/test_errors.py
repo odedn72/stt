@@ -30,34 +30,34 @@ The error hierarchy is defined in spec 00, section 8.1:
 import pytest
 
 from systemstt.errors import (
-    SystemSTTError,
-    AudioError,
-    DeviceNotFoundError,
-    DeviceDisconnectedError,
-    AudioCaptureError,
-    STTEngineError,
-    ModelLoadError,
-    ModelDownloadError,
-    TranscriptionError,
-    CloudAPIError,
-    APIAuthenticationError,
-    APITimeoutError,
-    APIRateLimitError,
-    APIUnavailableError,
-    TextInjectionError,
     AccessibilityPermissionError,
-    InjectionFailedError,
+    APIAuthenticationError,
+    APIRateLimitError,
+    APITimeoutError,
+    APIUnavailableError,
+    AudioCaptureError,
+    AudioError,
+    CloudAPIError,
+    ConfigurationError,
+    DeviceDisconnectedError,
+    DeviceNotFoundError,
     HotkeyError,
     HotkeyRegistrationError,
-    ConfigurationError,
-    SettingsLoadError,
+    InjectionFailedError,
     KeychainAccessError,
+    ModelDownloadError,
+    ModelLoadError,
+    SettingsLoadError,
+    STTEngineError,
+    SystemSTTError,
+    TextInjectionError,
+    TranscriptionError,
 )
-
 
 # ---------------------------------------------------------------------------
 # Base error
 # ---------------------------------------------------------------------------
+
 
 class TestSystemSTTError:
     """Tests for the root exception class."""
@@ -77,6 +77,7 @@ class TestSystemSTTError:
 # ---------------------------------------------------------------------------
 # Audio errors
 # ---------------------------------------------------------------------------
+
 
 class TestAudioErrors:
     """Tests for audio-related exceptions."""
@@ -113,6 +114,7 @@ class TestAudioErrors:
 # ---------------------------------------------------------------------------
 # STT Engine errors
 # ---------------------------------------------------------------------------
+
 
 class TestSTTEngineErrors:
     """Tests for STT engine exceptions."""
@@ -163,6 +165,7 @@ class TestSTTEngineErrors:
 # Text injection errors
 # ---------------------------------------------------------------------------
 
+
 class TestTextInjectionErrors:
     """Tests for text injection exceptions."""
 
@@ -184,6 +187,7 @@ class TestTextInjectionErrors:
 # Hotkey errors
 # ---------------------------------------------------------------------------
 
+
 class TestHotkeyErrors:
     """Tests for hotkey exceptions."""
 
@@ -201,6 +205,7 @@ class TestHotkeyErrors:
 # ---------------------------------------------------------------------------
 # Configuration errors
 # ---------------------------------------------------------------------------
+
 
 class TestConfigurationErrors:
     """Tests for configuration exceptions."""

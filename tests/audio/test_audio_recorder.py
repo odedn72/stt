@@ -8,18 +8,18 @@ audio and deliver chunks via callback. All sounddevice calls are mocked.
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
 
-from systemstt.audio.recorder import AudioRecorder, AudioConfig, RecorderState
-from systemstt.errors import AudioCaptureError, DeviceNotFoundError, DeviceDisconnectedError
-
+from systemstt.audio.recorder import AudioConfig, AudioRecorder, RecorderState
+from systemstt.errors import AudioCaptureError, DeviceNotFoundError
 
 # ---------------------------------------------------------------------------
 # AudioConfig tests
 # ---------------------------------------------------------------------------
+
 
 class TestAudioConfig:
     """Tests for the AudioConfig dataclass."""
@@ -58,6 +58,7 @@ class TestAudioConfig:
 # RecorderState tests
 # ---------------------------------------------------------------------------
 
+
 class TestRecorderState:
     """Tests for RecorderState enum."""
 
@@ -74,6 +75,7 @@ class TestRecorderState:
 # ---------------------------------------------------------------------------
 # AudioRecorder lifecycle tests
 # ---------------------------------------------------------------------------
+
 
 class TestAudioRecorderLifecycle:
     """Tests for AudioRecorder start/stop lifecycle."""
@@ -110,9 +112,11 @@ class TestAudioRecorderLifecycle:
         mock_sd.InputStream.assert_called_once()
         # Verify key arguments
         call_kwargs = mock_sd.InputStream.call_args
-        assert call_kwargs.kwargs.get("samplerate") == 16_000 or \
-               (call_kwargs.args and call_kwargs.args[0] == 16_000) or \
-               "samplerate" in str(call_kwargs)
+        assert (
+            call_kwargs.kwargs.get("samplerate") == 16_000
+            or (call_kwargs.args and call_kwargs.args[0] == 16_000)
+            or "samplerate" in str(call_kwargs)
+        )
 
     @patch("systemstt.audio.recorder.sd")
     def test_stop_closes_stream(self, mock_sd: MagicMock) -> None:
@@ -124,18 +128,14 @@ class TestAudioRecorderLifecycle:
         stream_mock.close.assert_called()
 
     @patch("systemstt.audio.recorder.sd")
-    def test_start_raises_audio_capture_error_on_stream_failure(
-        self, mock_sd: MagicMock
-    ) -> None:
+    def test_start_raises_audio_capture_error_on_stream_failure(self, mock_sd: MagicMock) -> None:
         mock_sd.InputStream.side_effect = Exception("PortAudio error")
         recorder = AudioRecorder(config=AudioConfig())
         with pytest.raises(AudioCaptureError):
             recorder.start()
 
     @patch("systemstt.audio.recorder.sd")
-    def test_start_raises_device_not_found_for_invalid_device(
-        self, mock_sd: MagicMock
-    ) -> None:
+    def test_start_raises_device_not_found_for_invalid_device(self, mock_sd: MagicMock) -> None:
         mock_sd.InputStream.side_effect = Exception("Invalid device")
         config = AudioConfig(device_id=999)
         recorder = AudioRecorder(config=config)
@@ -146,6 +146,7 @@ class TestAudioRecorderLifecycle:
 # ---------------------------------------------------------------------------
 # AudioRecorder callback tests
 # ---------------------------------------------------------------------------
+
 
 class TestAudioRecorderCallback:
     """Tests for audio chunk delivery via callback."""
@@ -179,6 +180,7 @@ class TestAudioRecorderCallback:
 # AudioRecorder config update tests
 # ---------------------------------------------------------------------------
 
+
 class TestAudioRecorderConfigUpdate:
     """Tests for updating AudioRecorder configuration at runtime."""
 
@@ -206,6 +208,7 @@ class TestAudioRecorderConfigUpdate:
 # ---------------------------------------------------------------------------
 # AudioRecorder audio callback edge cases
 # ---------------------------------------------------------------------------
+
 
 class TestAudioRecorderCallbackEdgeCases:
     """Edge case tests for the audio callback pipeline."""

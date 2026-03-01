@@ -38,10 +38,10 @@ try:
     )
 except ImportError:
     # Allow importing on non-macOS for testing with mocks
-    CGEventPost = None  # type: ignore[assignment]
-    CGEventCreateKeyboardEvent = None  # type: ignore[assignment]
-    CGEventKeyboardSetUnicodeString = None  # type: ignore[assignment]
-    CGEventSetFlags = None  # type: ignore[assignment]
+    CGEventPost = None
+    CGEventCreateKeyboardEvent = None
+    CGEventKeyboardSetUnicodeString = None
+    CGEventSetFlags = None
     kCGHIDEventTap = 0  # noqa: N816
     kCGEventKeyDown = 10  # noqa: N816
     kCGEventKeyUp = 11  # noqa: N816
@@ -56,8 +56,8 @@ try:
         AXIsProcessTrustedWithOptions,
     )
 except ImportError:
-    AXIsProcessTrusted = None  # type: ignore[assignment]
-    AXIsProcessTrustedWithOptions = None  # type: ignore[assignment]
+    AXIsProcessTrusted = None
+    AXIsProcessTrustedWithOptions = None
 
 # Virtual key codes for special keys
 _SPECIAL_KEY_CODES: dict[str, int] = {
@@ -76,11 +76,31 @@ _SPECIAL_KEY_CODES: dict[str, int] = {
 
 # Virtual key codes for letter keys
 _LETTER_KEY_CODES: dict[str, int] = {
-    "a": 0x00, "b": 0x0B, "c": 0x08, "d": 0x02, "e": 0x0E,
-    "f": 0x03, "g": 0x05, "h": 0x04, "i": 0x22, "j": 0x26,
-    "k": 0x28, "l": 0x25, "m": 0x2E, "n": 0x2D, "o": 0x1F,
-    "p": 0x23, "q": 0x0C, "r": 0x0F, "s": 0x01, "t": 0x11,
-    "u": 0x20, "v": 0x09, "w": 0x0D, "x": 0x07, "y": 0x10,
+    "a": 0x00,
+    "b": 0x0B,
+    "c": 0x08,
+    "d": 0x02,
+    "e": 0x0E,
+    "f": 0x03,
+    "g": 0x05,
+    "h": 0x04,
+    "i": 0x22,
+    "j": 0x26,
+    "k": 0x28,
+    "l": 0x25,
+    "m": 0x2E,
+    "n": 0x2D,
+    "o": 0x1F,
+    "p": 0x23,
+    "q": 0x0C,
+    "r": 0x0F,
+    "s": 0x01,
+    "t": 0x11,
+    "u": 0x20,
+    "v": 0x09,
+    "w": 0x0D,
+    "x": 0x07,
+    "y": 0x10,
     "z": 0x06,
 }
 
@@ -122,9 +142,7 @@ class MacOSTextInjector(TextInjector):
                 raise AccessibilityPermissionError(
                     "Accessibility permission not granted. Cannot inject text."
                 ) from exc
-            raise InjectionFailedError(
-                f"Failed to inject text: {exc}"
-            ) from exc
+            raise InjectionFailedError(f"Failed to inject text: {exc}") from exc
 
     async def send_keystroke(
         self,
@@ -164,9 +182,7 @@ class MacOSTextInjector(TextInjector):
             # Create and post key-up event
             event_up = CGEventCreateKeyboardEvent(None, key_code, False)
             if event_up is None:
-                raise InjectionFailedError(
-                    f"Failed to create key-up event for key code {key_code}"
-                )
+                raise InjectionFailedError(f"Failed to create key-up event for key code {key_code}")
             if flags:
                 CGEventSetFlags(event_up, flags)
             CGEventPost(kCGHIDEventTap, event_up)
@@ -177,9 +193,7 @@ class MacOSTextInjector(TextInjector):
                 raise AccessibilityPermissionError(
                     "Accessibility permission not granted. Cannot send keystroke."
                 ) from exc
-            raise InjectionFailedError(
-                f"Failed to send keystroke: {exc}"
-            ) from exc
+            raise InjectionFailedError(f"Failed to send keystroke: {exc}") from exc
 
     def has_accessibility_permission(self) -> bool:
         """Check if the app has Accessibility permission."""

@@ -34,15 +34,17 @@ _MAX_LOG_BYTES = 5 * 1024 * 1024  # 5 MB
 _BACKUP_COUNT = 3
 
 # Patterns that should never appear in logs
-_SENSITIVE_PATTERNS = frozenset({
-    "api_key",
-    "api-key",
-    "apikey",
-    "secret",
-    "password",
-    "token",
-    "authorization",
-})
+_SENSITIVE_PATTERNS = frozenset(
+    {
+        "api_key",
+        "api-key",
+        "apikey",
+        "secret",
+        "password",
+        "token",
+        "authorization",
+    }
+)
 
 _LOG_FORMAT = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
 _LOG_DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
@@ -76,8 +78,7 @@ class SensitiveDataFilter(logging.Filter):
             }
         elif isinstance(record.args, tuple):
             record.args = tuple(
-                self._redact_if_needed(a) if isinstance(a, str) else a
-                for a in record.args
+                self._redact_if_needed(a) if isinstance(a, str) else a for a in record.args
             )
 
         # 3. Check the fully formatted message for anything that slipped
@@ -112,7 +113,7 @@ class SensitiveDataFilter(logging.Filter):
             # Match patterns like: api_key=abc123, api_key: abc123, "api_key": "abc123"
             message = re.sub(
                 rf'({pattern})\s*[=:]\s*["\']?(\S+)["\']?',
-                r'\1=[REDACTED]',
+                r"\1=[REDACTED]",
                 message,
                 flags=re.IGNORECASE,
             )

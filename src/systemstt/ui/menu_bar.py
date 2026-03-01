@@ -12,13 +12,16 @@ Design spec reference: Section 4.
 from __future__ import annotations
 
 import logging
-from typing import Optional
+from typing import TYPE_CHECKING
 
-from PySide6.QtCore import QObject, QSize, QTimer, Signal
+from PySide6.QtCore import QObject, QTimer, Signal
 from PySide6.QtGui import QColor, QFont, QIcon, QImage, QPainter, QPixmap
 from PySide6.QtWidgets import QApplication, QSystemTrayIcon
 
 from systemstt.ui.theme import TOKENS
+
+if TYPE_CHECKING:
+    from systemstt.ui.dropdown_menu import DropdownMenu
 
 logger = logging.getLogger(__name__)
 
@@ -100,7 +103,7 @@ class MenuBarWidget(QObject):
     settings_requested = Signal()
     quit_requested = Signal()
 
-    def __init__(self, parent: Optional[QApplication] = None) -> None:
+    def __init__(self, parent: QApplication | None = None) -> None:
         super().__init__(parent)
         self._app = parent
         self._language: str = "EN"
@@ -120,7 +123,7 @@ class MenuBarWidget(QObject):
         self._error_timer.timeout.connect(self._revert_from_error)
 
         # Dropdown menu (lazy-created when first needed)
-        self._dropdown: Optional[object] = None
+        self._dropdown: DropdownMenu | None = None
 
     def show(self) -> None:
         """Show the tray icon."""

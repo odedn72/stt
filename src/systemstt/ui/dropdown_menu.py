@@ -11,7 +11,6 @@ Design spec reference: Section 4.3.
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen
@@ -37,7 +36,7 @@ class _MenuItemWidget(QWidget):
         self,
         label: str,
         shortcut: str = "",
-        parent: Optional[QWidget] = None,
+        parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self.setFixedHeight(28)
@@ -57,6 +56,7 @@ class _MenuItemWidget(QWidget):
 
         layout.addStretch()
 
+        self._shortcut_label: QLabel | None = None
         if shortcut:
             self._shortcut_label = QLabel(shortcut)
             self._shortcut_label.setStyleSheet(
@@ -64,24 +64,22 @@ class _MenuItemWidget(QWidget):
                 " background: transparent;"
             )
             layout.addWidget(self._shortcut_label)
-        else:
-            self._shortcut_label = None
 
     def set_label(self, text: str) -> None:
         """Update the item label text."""
         self._label.setText(text)
 
-    def enterEvent(self, event: object) -> None:  # type: ignore[override]
+    def enterEvent(self, event: object) -> None:  # noqa: N802
         self._hovered = True
         self.setStyleSheet(f"background-color: {TOKENS.bg_hover};")
         super().enterEvent(event)  # type: ignore[arg-type]
 
-    def leaveEvent(self, event: object) -> None:  # type: ignore[override]
+    def leaveEvent(self, event: object) -> None:  # noqa: N802
         self._hovered = False
         self.setStyleSheet("background-color: transparent;")
         super().leaveEvent(event)  # type: ignore[arg-type]
 
-    def mousePressEvent(self, event: object) -> None:  # type: ignore[override]
+    def mousePressEvent(self, event: object) -> None:  # noqa: N802
         self.clicked.emit()
         super().mousePressEvent(event)  # type: ignore[arg-type]
 
@@ -89,11 +87,11 @@ class _MenuItemWidget(QWidget):
 class _DividerWidget(QWidget):
     """A horizontal divider line."""
 
-    def __init__(self, parent: Optional[QWidget] = None) -> None:
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setFixedHeight(9)  # 4px margin top + 1px line + 4px margin bottom
 
-    def paintEvent(self, event: object) -> None:  # type: ignore[override]
+    def paintEvent(self, event: object) -> None:  # noqa: N802
         painter = QPainter(self)
         painter.setPen(QPen(QColor(TOKENS.border), 1))
         y = self.height() // 2
@@ -120,7 +118,7 @@ class DropdownMenu(QWidget):
     settings_clicked = Signal()
     quit_clicked = Signal()
 
-    def __init__(self, parent: Optional[QWidget] = None) -> None:
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
 
         self.setWindowFlags(
@@ -217,7 +215,7 @@ class DropdownMenu(QWidget):
         shadow.setColor(QColor(0, 0, 0, 102))
         self.setGraphicsEffect(shadow)
 
-    def paintEvent(self, event: object) -> None:  # type: ignore[override]
+    def paintEvent(self, event: object) -> None:  # noqa: N802
         """Paint the translucent rounded background."""
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -255,8 +253,7 @@ class DropdownMenu(QWidget):
         if is_active:
             self._status_label.setText("Dictation Active")
             self._status_label.setStyleSheet(
-                f"color: {TOKENS.accent}; font-size: {TOKENS.text_base}px;"
-                " background: transparent;"
+                f"color: {TOKENS.accent}; font-size: {TOKENS.text_base}px; background: transparent;"
             )
             self._start_stop_item.set_label("Stop Dictation")
         else:

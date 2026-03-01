@@ -8,17 +8,19 @@ mock platform services, and Qt application setup.
 from __future__ import annotations
 
 import json
-from pathlib import Path
-from typing import Any, AsyncIterator
-from unittest.mock import AsyncMock, MagicMock, patch
+from typing import TYPE_CHECKING, Any
+from unittest.mock import AsyncMock, MagicMock
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 import numpy as np
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Audio fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def sample_rate() -> int:
@@ -84,6 +86,7 @@ def empty_chunk() -> np.ndarray:
 # Settings / Configuration fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def default_settings_dict() -> dict[str, Any]:
     """Default settings as a dictionary, matching design spec section 8.2."""
@@ -140,6 +143,7 @@ def partial_settings_dict() -> dict[str, Any]:
 # Mock platform services
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def mock_text_injector() -> MagicMock:
     """A mock TextInjector with async methods."""
@@ -192,6 +196,7 @@ def mock_secure_store() -> MagicMock:
 # Mock audio device fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def mock_audio_devices() -> list[dict[str, Any]]:
     """Mock sounddevice device info list."""
@@ -223,6 +228,7 @@ def mock_audio_devices() -> list[dict[str, Any]]:
 # ---------------------------------------------------------------------------
 # Mock STT engine fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def mock_transcription_result() -> dict[str, Any]:
@@ -295,6 +301,7 @@ def mock_mixed_language_result() -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # Stop-dictation callback fixture
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def mock_stop_dictation_callback() -> MagicMock:

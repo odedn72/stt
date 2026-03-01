@@ -18,14 +18,12 @@ Tests verify:
 
 from __future__ import annotations
 
-import pytest
-
 from systemstt.ui.floating_pill import FloatingPill
-
 
 # ---------------------------------------------------------------------------
 # Show/hide lifecycle tests
 # ---------------------------------------------------------------------------
+
 
 class TestFloatingPillLifecycle:
     """Tests for pill show/hide lifecycle."""
@@ -46,6 +44,7 @@ class TestFloatingPillLifecycle:
 # Language update tests
 # ---------------------------------------------------------------------------
 
+
 class TestFloatingPillLanguage:
     """Tests for real-time language label updates."""
 
@@ -61,6 +60,7 @@ class TestFloatingPillLanguage:
 # ---------------------------------------------------------------------------
 # Elapsed time tests
 # ---------------------------------------------------------------------------
+
 
 class TestFloatingPillElapsedTime:
     """Tests for elapsed time display."""
@@ -89,6 +89,7 @@ class TestFloatingPillElapsedTime:
 # ---------------------------------------------------------------------------
 # Preview text tests
 # ---------------------------------------------------------------------------
+
 
 class TestFloatingPillPreview:
     """Tests for the live transcription preview area."""
@@ -119,6 +120,7 @@ class TestFloatingPillPreview:
 # Error/warning display tests
 # ---------------------------------------------------------------------------
 
+
 class TestFloatingPillErrors:
     """Tests for inline error and warning display."""
 
@@ -139,6 +141,7 @@ class TestFloatingPillErrors:
 # ---------------------------------------------------------------------------
 # Command confirmation tests
 # ---------------------------------------------------------------------------
+
 
 class TestFloatingPillCommandConfirmation:
     """Tests for voice command confirmation display."""
@@ -168,6 +171,7 @@ class TestFloatingPillCommandConfirmation:
 # Expansion/collapse tests
 # ---------------------------------------------------------------------------
 
+
 class TestFloatingPillExpansion:
     """Tests for the expansion area behavior."""
 
@@ -180,6 +184,7 @@ class TestFloatingPillExpansion:
 # ---------------------------------------------------------------------------
 # Position management tests
 # ---------------------------------------------------------------------------
+
 
 class TestFloatingPillPosition:
     """Tests for pill positioning and dragging."""
@@ -198,6 +203,7 @@ class TestFloatingPillPosition:
 # ---------------------------------------------------------------------------
 # Signal tests
 # ---------------------------------------------------------------------------
+
 
 class TestFloatingPillSignals:
     """Tests that required signals are defined."""

@@ -17,10 +17,9 @@ Contains three classes:
 from __future__ import annotations
 
 import asyncio
-import concurrent.futures
 import logging
 import threading
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 from PySide6.QtCore import QObject, QThread, QTimer, Signal
@@ -32,21 +31,30 @@ from systemstt.audio.recorder import AudioConfig, AudioRecorder
 from systemstt.commands.executor import CommandExecutor
 from systemstt.commands.parser import CommandParser
 from systemstt.commands.registry import CommandAction, CommandRegistry
-from systemstt.config.models import EngineType as ConfigEngineType, SettingsModel
-from systemstt.config.secure import SecureStore
-from systemstt.config.store import SettingsStore
+from systemstt.config.models import EngineType as ConfigEngineType
+from systemstt.config.models import SettingsModel
 from systemstt.platform.base import HotkeyBinding, HotkeyManager, TextInjector
-from systemstt.shutdown import ShutdownManager
+
+if TYPE_CHECKING:
+    import concurrent.futures
+
+    from systemstt.config.secure import SecureStore
+    from systemstt.config.store import SettingsStore
+    from systemstt.shutdown import ShutdownManager
 from systemstt.stt.base import (
     DetectedLanguage,
-    EngineType as STTEngineType,
     STTEngine,
     TranscriptionResult,
+)
+from systemstt.stt.base import (
+    EngineType as STTEngineType,
 )
 from systemstt.stt.cloud_api import CloudAPIConfig
 from systemstt.stt.engine_manager import EngineManager
 from systemstt.stt.local_whisper import (
     LocalWhisperConfig,
+)
+from systemstt.stt.local_whisper import (
     WhisperModelSize as STTWhisperModelSize,
 )
 from systemstt.stt.postprocess import filter_hallucinations
@@ -86,9 +94,9 @@ class AsyncWorker(QThread):
     command_executed = Signal(str)  # confirmation text
     task_error = Signal(str)
 
-    def __init__(self, parent: Optional[QObject] = None) -> None:
+    def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
-        self._loop: Optional[asyncio.AbstractEventLoop] = None
+        self._loop: asyncio.AbstractEventLoop | None = None
         self._started_event = threading.Event()
 
     # -- QThread entry point --------------------------------------------------
@@ -107,9 +115,7 @@ class AsyncWorker(QThread):
             for task in pending:
                 task.cancel()
             if pending:
-                self._loop.run_until_complete(
-                    asyncio.gather(*pending, return_exceptions=True)
-                )
+                self._loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
             self._loop.run_until_complete(self._loop.shutdown_asyncgens())
             self._loop.close()
             self._loop = None
@@ -126,8 +132,9 @@ class AsyncWorker(QThread):
         self._started_event.wait(timeout)
 
     def schedule(
-        self, coro: Any,
-    ) -> Optional[concurrent.futures.Future[Any]]:
+        self,
+        coro: Any,  # noqa: ANN401
+    ) -> concurrent.futures.Future[Any] | None:
         """Submit a coroutine to the asyncio loop.
 
         Returns a ``concurrent.futures.Future`` that can be used to wait for
@@ -165,9 +172,9 @@ class AsyncWorker(QThread):
     def schedule_transcribe(
         self,
         engine: STTEngine,
-        audio: np.ndarray,
-        language_hint: Optional[DetectedLanguage] = None,
-        context_prompt: Optional[str] = None,
+        audio: np.ndarray,  # type: ignore[type-arg]
+        language_hint: DetectedLanguage | None = None,
+        context_prompt: str | None = None,
     ) -> None:
         """Transcribe audio asynchronously."""
 
@@ -232,7 +239,7 @@ class AudioBridge(QObject):
     chunk_received = Signal(object)  # np.ndarray
     error_received = Signal(str)
 
-    def on_chunk(self, chunk: np.ndarray) -> None:
+    def on_chunk(self, chunk: np.ndarray) -> None:  # type: ignore[type-arg]
         """Callback for ``AudioRecorder.on_audio_chunk`` (thread-safe)."""
         self.chunk_received.emit(chunk)
 
@@ -270,7 +277,7 @@ class AppController(QObject):
         shutdown_manager: ShutdownManager,
         hotkey_manager: HotkeyManager,
         text_injector: TextInjector,
-        parent: Optional[QObject] = None,
+        parent: QObject | None = None,
     ) -> None:
         super().__init__(parent)
 
@@ -284,12 +291,12 @@ class AppController(QObject):
 
         # -- Core state -------------------------------------------------------
         self._state_machine = DictationStateMachine()
-        self._audio_buffer: list[np.ndarray] = []
+        self._audio_buffer: list[np.ndarray] = []  # type: ignore[type-arg]
         self._buffered_samples: int = 0
         self._pending_transcriptions: int = 0
         self._elapsed_seconds: int = 0
         self._current_language: str = "EN"
-        self._last_transcription_text: Optional[str] = None
+        self._last_transcription_text: str | None = None
 
         # -- Async worker -----------------------------------------------------
         self._async_worker = AsyncWorker(self)
@@ -321,7 +328,7 @@ class AppController(QObject):
         # -- UI ----------------------------------------------------------------
         self._menu_bar = MenuBarWidget()
         self._floating_pill = FloatingPill()
-        self._settings_window: Optional[Any] = None  # lazy-created
+        self._settings_window: Any | None = None  # lazy-created
 
         # -- Timers ------------------------------------------------------------
         self._elapsed_timer = QTimer(self)
@@ -368,19 +375,29 @@ class AppController(QObject):
     def _register_shutdown_tasks(self) -> None:
         """Register cleanup callbacks with the ShutdownManager."""
         self._shutdown_manager.register(
-            self._recorder.stop, priority=10, name="stop-audio",
+            self._recorder.stop,
+            priority=10,
+            name="stop-audio",
         )
         self._shutdown_manager.register(
-            self._shutdown_engine_sync, priority=20, name="shutdown-stt",
+            self._shutdown_engine_sync,
+            priority=20,
+            name="shutdown-stt",
         )
         self._shutdown_manager.register(
-            self._hotkey_manager.unregister, priority=30, name="unregister-hotkey",
+            self._hotkey_manager.unregister,
+            priority=30,
+            name="unregister-hotkey",
         )
         self._shutdown_manager.register(
-            self._save_settings, priority=50, name="save-settings",
+            self._save_settings,
+            priority=50,
+            name="save-settings",
         )
         self._shutdown_manager.register(
-            self._async_worker.stop_loop, priority=80, name="stop-async-worker",
+            self._async_worker.stop_loop,
+            priority=80,
+            name="stop-async-worker",
         )
 
     # =====================================================================
@@ -480,7 +497,8 @@ class AppController(QObject):
         elif state == DictationState.ERROR:
             # Dismiss error and return to idle
             self._state_machine.transition_to(
-                DictationState.IDLE, "user_dismiss",
+                DictationState.IDLE,
+                "user_dismiss",
             )
             self._menu_bar.set_state_idle(self._current_language)
             self._floating_pill.hide_pill()
@@ -508,7 +526,8 @@ class AppController(QObject):
         # Convert config EngineType → STT EngineType
         stt_engine_type = STTEngineType(self._settings.engine.value)
         self._async_worker.schedule_activate_engine(
-            self._engine_manager, stt_engine_type,
+            self._engine_manager,
+            stt_engine_type,
         )
 
     def _stop_dictation(self) -> None:
@@ -520,10 +539,12 @@ class AppController(QObject):
         if state == DictationState.STARTING:
             # Cannot go STARTING → STOPPING; use ERROR as intermediary
             self._state_machine.transition_to(
-                DictationState.ERROR, "cancel_start",
+                DictationState.ERROR,
+                "cancel_start",
             )
             self._state_machine.transition_to(
-                DictationState.IDLE, "error_recovery",
+                DictationState.IDLE,
+                "error_recovery",
             )
             self._menu_bar.set_state_idle(self._current_language)
             self._floating_pill.hide_pill()
@@ -570,7 +591,9 @@ class AppController(QObject):
         except Exception as exc:
             logger.error("Failed to start audio recorder: %s", exc)
             self._state_machine.transition_to(
-                DictationState.ERROR, "recorder_start_failed", error=exc,
+                DictationState.ERROR,
+                "recorder_start_failed",
+                error=exc,
             )
             self._menu_bar.set_state_error(self._current_language)
             self._floating_pill.show_error(str(exc))
@@ -580,11 +603,7 @@ class AppController(QObject):
         self._state_machine.transition_to(DictationState.ACTIVE, "engine_ready")
 
         # Update UI
-        engine_label = (
-            "Cloud"
-            if self._settings.engine == ConfigEngineType.CLOUD_API
-            else "Local"
-        )
+        engine_label = "Cloud" if self._settings.engine == ConfigEngineType.CLOUD_API else "Local"
         self._menu_bar.set_state_active(self._current_language)
         if self._settings.show_status_pill:
             self._floating_pill.show_active(self._current_language, engine_label)
@@ -630,9 +649,11 @@ class AppController(QObject):
         if self._settings_window is not None:
             from systemstt.ui.settings_window import SettingsWindow
 
-            if isinstance(self._settings_window, SettingsWindow):
-                if self._settings_window.isVisible():
-                    self._settings_window.update_audio_level(level_reading)
+            if (
+                isinstance(self._settings_window, SettingsWindow)
+                and self._settings_window.isVisible()
+            ):
+                self._settings_window.update_audio_level(level_reading)
 
         # Buffer the chunk
         self._audio_buffer.append(chunk)
@@ -643,11 +664,11 @@ class AppController(QObject):
             self._dispatch_transcription()
 
     @staticmethod
-    def _is_silent(audio: np.ndarray) -> bool:
+    def _is_silent(audio: np.ndarray) -> bool:  # type: ignore[type-arg]
         """Return True if the audio chunk is below the silence threshold."""
         if len(audio) == 0:
             return True
-        rms = float(np.sqrt(np.mean(audio ** 2)))
+        rms = float(np.sqrt(np.mean(audio**2)))
         return rms < _SILENCE_RMS_THRESHOLD
 
     def _dispatch_transcription(self) -> None:
@@ -671,10 +692,7 @@ class AppController(QObject):
 
         # Skip silent chunks for cloud API (saves API calls + avoids hallucinations).
         # Local Whisper has built-in VAD, so it handles silence internally.
-        if (
-            self._settings.engine == ConfigEngineType.CLOUD_API
-            and self._is_silent(audio)
-        ):
+        if self._settings.engine == ConfigEngineType.CLOUD_API and self._is_silent(audio):
             logger.debug("Skipping silent audio chunk for cloud API")
             return
 
@@ -685,7 +703,9 @@ class AppController(QObject):
 
         self._pending_transcriptions += 1
         self._async_worker.schedule_transcribe(
-            engine, audio, context_prompt=self._last_transcription_text,
+            engine,
+            audio,
+            context_prompt=self._last_transcription_text,
         )
 
     # =====================================================================
@@ -727,7 +747,8 @@ class AppController(QObject):
             # Inject any text before the command
             if parse_result.text_before:
                 self._async_worker.schedule_inject_text(
-                    self._text_injector, parse_result.text_before,
+                    self._text_injector,
+                    parse_result.text_before,
                 )
             # Execute the command
             self._async_worker.schedule_execute_command(
@@ -748,7 +769,8 @@ class AppController(QObject):
 
         if self._state_machine.state == DictationState.ACTIVE:
             self._floating_pill.show_error(
-                f"Transcription failed: {error_message}", is_warning=True,
+                f"Transcription failed: {error_message}",
+                is_warning=True,
             )
 
         self._maybe_finish_stop()
@@ -900,10 +922,7 @@ class AppController(QObject):
         elif key in ("audio_device_id", "audio_device_name"):
             self._recorder.update_config(self._build_audio_config())
         elif key == "show_status_pill":
-            if (
-                not bool(value)
-                and self._state_machine.state == DictationState.ACTIVE
-            ):
+            if not bool(value) and self._state_machine.state == DictationState.ACTIVE:
                 self._floating_pill.hide_pill()
         elif key == "show_live_preview":
             if not bool(value):

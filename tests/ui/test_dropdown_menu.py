@@ -13,8 +13,6 @@ Tests verify:
 
 from __future__ import annotations
 
-import pytest
-
 from systemstt.ui.dropdown_menu import DropdownMenu
 
 
@@ -27,6 +25,7 @@ class TestDropdownMenuCreation:
 
     def test_is_qwidget(self) -> None:
         from PySide6.QtWidgets import QWidget
+
         menu = DropdownMenu()
         assert isinstance(menu, QWidget)
 

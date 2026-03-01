@@ -15,16 +15,16 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from systemstt.stt.base import EngineType, EngineState
-from systemstt.stt.local_whisper import LocalWhisperConfig, WhisperModelSize
+from systemstt.errors import STTEngineError
+from systemstt.stt.base import EngineState, EngineType
 from systemstt.stt.cloud_api import CloudAPIConfig
 from systemstt.stt.engine_manager import EngineManager
-from systemstt.errors import STTEngineError
-
+from systemstt.stt.local_whisper import LocalWhisperConfig, WhisperModelSize
 
 # ---------------------------------------------------------------------------
 # EngineManager initialization tests
 # ---------------------------------------------------------------------------
+
 
 class TestEngineManagerInit:
     """Tests for EngineManager creation and initial state."""
@@ -46,14 +46,13 @@ class TestEngineManagerInit:
 # EngineManager activation tests
 # ---------------------------------------------------------------------------
 
+
 class TestEngineManagerActivation:
     """Tests for engine activation and switching."""
 
     @pytest.mark.asyncio
     @patch("systemstt.stt.engine_manager.CloudAPIEngine")
-    async def test_activate_cloud_engine(
-        self, mock_cloud_cls: MagicMock
-    ) -> None:
+    async def test_activate_cloud_engine(self, mock_cloud_cls: MagicMock) -> None:
         mock_engine = AsyncMock()
         mock_engine.engine_type = EngineType.CLOUD_API
         mock_engine.state = EngineState.READY
@@ -71,9 +70,7 @@ class TestEngineManagerActivation:
 
     @pytest.mark.asyncio
     @patch("systemstt.stt.engine_manager.LocalWhisperEngine")
-    async def test_activate_local_engine(
-        self, mock_local_cls: MagicMock
-    ) -> None:
+    async def test_activate_local_engine(self, mock_local_cls: MagicMock) -> None:
         mock_engine = AsyncMock()
         mock_engine.engine_type = EngineType.LOCAL_WHISPER
         mock_engine.state = EngineState.READY
@@ -136,14 +133,13 @@ class TestEngineManagerActivation:
 # EngineManager shutdown tests
 # ---------------------------------------------------------------------------
 
+
 class TestEngineManagerShutdown:
     """Tests for manager shutdown."""
 
     @pytest.mark.asyncio
     @patch("systemstt.stt.engine_manager.CloudAPIEngine")
-    async def test_shutdown_shuts_down_active_engine(
-        self, mock_cloud_cls: MagicMock
-    ) -> None:
+    async def test_shutdown_shuts_down_active_engine(self, mock_cloud_cls: MagicMock) -> None:
         mock_engine = AsyncMock()
         mock_engine.engine_type = EngineType.CLOUD_API
         mock_engine.state = EngineState.READY
@@ -170,6 +166,7 @@ class TestEngineManagerShutdown:
 # ---------------------------------------------------------------------------
 # EngineManager config update tests
 # ---------------------------------------------------------------------------
+
 
 class TestEngineManagerConfigUpdate:
     """Tests for configuration updates."""

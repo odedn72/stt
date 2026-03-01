@@ -40,7 +40,7 @@ class _LevelBar(QWidget):
         self._level = max(0.0, min(1.0, normalized))
         self.update()
 
-    def paintEvent(self, event: object) -> None:  # type: ignore[override]  # noqa: N802
+    def paintEvent(self, event: object) -> None:  # noqa: N802
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 

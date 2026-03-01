@@ -18,26 +18,26 @@ from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import numpy as np
 import pytest
-from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QApplication
 
 from systemstt.app import DictationState
-from systemstt.config.models import EngineType as ConfigEngineType, SettingsModel
+from systemstt.config.models import EngineType as ConfigEngineType
+from systemstt.config.models import SettingsModel
 from systemstt.controller import (
+    _CLOUD_BUFFER_SAMPLES,
+    _LOCAL_BUFFER_SAMPLES,
     AppController,
     AsyncWorker,
     AudioBridge,
-    _CLOUD_BUFFER_SAMPLES,
-    _LOCAL_BUFFER_SAMPLES,
-    _SILENCE_RMS_THRESHOLD,
 )
 from systemstt.stt.base import (
     DetectedLanguage,
-    EngineType as STTEngineType,
     TranscriptionResult,
     TranscriptionSegment,
 )
-
+from systemstt.stt.base import (
+    EngineType as STTEngineType,
+)
 
 # ---------------------------------------------------------------------------
 # Session-scoped QApplication
@@ -179,7 +179,8 @@ class TestAsyncWorker:
         engine_manager.activate_engine = AsyncMock()
 
         worker.schedule_activate_engine(
-            engine_manager, STTEngineType.CLOUD_API,
+            engine_manager,
+            STTEngineType.CLOUD_API,
         )
 
         # Wait for signal
@@ -205,7 +206,8 @@ class TestAsyncWorker:
         )
 
         worker.schedule_activate_engine(
-            engine_manager, STTEngineType.LOCAL_WHISPER,
+            engine_manager,
+            STTEngineType.LOCAL_WHISPER,
         )
 
         _wait_for(lambda: len(errors) > 0)
@@ -675,7 +677,8 @@ class TestTranscriptionResultHandling:
         controller._on_transcription_result(result)
 
         controller._async_worker.schedule_inject_text.assert_called_once_with(
-            mock_deps["text_injector"], "Hello world",
+            mock_deps["text_injector"],
+            "Hello world",
         )
 
     @patch("systemstt.controller.MenuBarWidget")
@@ -904,7 +907,8 @@ class TestSettingsHandlers:
         controller._on_api_key_changed("sk-new-key-123")
 
         mock_deps["secure_store"].set.assert_called_once_with(
-            "api_key", "sk-new-key-123",
+            "api_key",
+            "sk-new-key-123",
         )
         controller._engine_manager.update_cloud_config.assert_called()
 
@@ -986,7 +990,8 @@ class TestSettingsHandlers:
         from systemstt.platform.base import HotkeyBinding
 
         new_binding = HotkeyBinding(
-            key="d", modifiers=frozenset({"command"}),
+            key="d",
+            modifiers=frozenset({"command"}),
         )
         controller._on_hotkey_changed(new_binding)
 
@@ -1113,7 +1118,8 @@ class TestHallucinationFiltering:
         controller._on_transcription_result(result)
 
         controller._async_worker.schedule_inject_text.assert_called_once_with(
-            mock_deps["text_injector"], "Meeting at 3pm.",
+            mock_deps["text_injector"],
+            "Meeting at 3pm.",
         )
 
     @patch("systemstt.controller.MenuBarWidget")
@@ -1140,7 +1146,8 @@ class TestHallucinationFiltering:
         controller._on_transcription_result(result)
 
         controller._async_worker.schedule_inject_text.assert_called_once_with(
-            mock_deps["text_injector"], "Send the email to John",
+            mock_deps["text_injector"],
+            "Send the email to John",
         )
 
 
@@ -1481,7 +1488,7 @@ class TestRecorderError:
 
 
 def _wait_for(
-    condition: Any,
+    condition: Any,  # noqa: ANN401
     timeout_ms: int = 2000,
     interval_ms: int = 10,
 ) -> None:

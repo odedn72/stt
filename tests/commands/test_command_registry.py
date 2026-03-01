@@ -10,12 +10,12 @@ from __future__ import annotations
 
 import pytest
 
-from systemstt.commands.registry import CommandRegistry, VoiceCommand, CommandAction
-
+from systemstt.commands.registry import CommandAction, CommandRegistry, VoiceCommand
 
 # ---------------------------------------------------------------------------
 # CommandAction enum tests
 # ---------------------------------------------------------------------------
+
 
 class TestCommandAction:
     """Tests for the CommandAction enum."""
@@ -39,6 +39,7 @@ class TestCommandAction:
 # ---------------------------------------------------------------------------
 # VoiceCommand data model tests
 # ---------------------------------------------------------------------------
+
 
 class TestVoiceCommand:
     """Tests for the VoiceCommand dataclass."""
@@ -70,6 +71,7 @@ class TestVoiceCommand:
 # ---------------------------------------------------------------------------
 # CommandRegistry tests
 # ---------------------------------------------------------------------------
+
 
 class TestCommandRegistry:
     """Tests for the built-in command registry."""
