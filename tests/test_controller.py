@@ -26,6 +26,7 @@ from systemstt.config.models import SettingsModel
 from systemstt.controller import (
     _MAX_BUFFER_SAMPLES,
     _SILENCE_CHUNKS_FOR_DISPATCH,
+    _SPEECH_DURATION_SAMPLES,
     AppController,
     AsyncWorker,
     AudioBridge,
@@ -765,7 +766,7 @@ class TestSpeechBoundaryDispatch:
     @patch("systemstt.controller.FloatingPill")
     @patch("systemstt.controller.AudioRecorder")
     @patch("systemstt.controller.EngineManager")
-    def test_max_cap_forces_dispatch(
+    def test_speech_duration_dispatches_mid_speech(
         self,
         _mock_em: MagicMock,
         _mock_rec: MagicMock,
@@ -773,7 +774,7 @@ class TestSpeechBoundaryDispatch:
         _mock_menu: MagicMock,
         mock_deps: dict[str, Any],
     ) -> None:
-        """Continuous speech at max cap (20s) forces dispatch."""
+        """Continuous speech dispatches every 5s without requiring silence."""
         controller = AppController(**mock_deps)
         controller._async_worker = MagicMock()
         controller._async_worker.schedule_activate_engine = MagicMock()
@@ -783,11 +784,12 @@ class TestSpeechBoundaryDispatch:
         controller._on_dictation_toggle()
         controller._on_engine_ready()
 
-        # Send enough speech chunks to reach max cap
-        n_chunks = _MAX_BUFFER_SAMPLES // _CHUNK_SAMPLES  # 40 chunks = 20s
+        # Send 5s of speech (10 chunks × 8000 = 80000 samples)
+        n_chunks = _SPEECH_DURATION_SAMPLES // _CHUNK_SAMPLES
         for _ in range(n_chunks):
             controller._on_audio_chunk(_make_audio_chunk())
 
+        # Should have dispatched once at 5s
         controller._async_worker.schedule_transcribe.assert_called_once()
 
     @patch("systemstt.controller.MenuBarWidget")
@@ -1695,9 +1697,9 @@ class TestSilenceDetection:
         empty = np.array([], dtype=np.float32)
         assert AppController._has_speech(empty) is False
 
-        # Low ambient noise (RMS ~0.009) → no speech
+        # Low ambient noise (RMS ~0.007) → no speech
         rng = np.random.default_rng(42)
-        noise = (rng.standard_normal(16_000) * 0.009).astype(np.float32)
+        noise = (rng.standard_normal(16_000) * 0.007).astype(np.float32)
         assert AppController._has_speech(noise) is False
 
         # Speech burst in otherwise silent audio → speech detected
@@ -1809,6 +1811,39 @@ class TestDilutedSpeechFix:
         controller._on_dictation_toggle()
 
         controller._async_worker.schedule_transcribe.assert_not_called()
+
+    @patch("systemstt.controller.MenuBarWidget")
+    @patch("systemstt.controller.FloatingPill")
+    @patch("systemstt.controller.AudioRecorder")
+    @patch("systemstt.controller.EngineManager")
+    def test_max_cap_forces_dispatch_even_without_speech_detected(
+        self,
+        _mock_em: MagicMock,
+        _mock_rec: MagicMock,
+        _mock_pill: MagicMock,
+        _mock_menu: MagicMock,
+        mock_deps: dict[str, Any],
+    ) -> None:
+        """Max buffer cap dispatches even when _has_speech is False (quiet mic)."""
+        controller = AppController(**mock_deps)
+        controller._async_worker = MagicMock()
+        controller._async_worker.schedule_activate_engine = MagicMock()
+        mock_engine = MagicMock()
+        controller._engine_manager.active_engine = mock_engine
+
+        controller._on_dictation_toggle()
+        controller._on_engine_ready()
+
+        # Fill buffer to max cap with very quiet audio (below _has_speech threshold)
+        # simulating a quiet mic — RMS ~0.003
+        n_chunks = _MAX_BUFFER_SAMPLES // _CHUNK_SAMPLES
+        rng = np.random.default_rng(42)
+        for _ in range(n_chunks):
+            quiet = (rng.standard_normal(_CHUNK_SAMPLES) * 0.003).astype(np.float32)
+            controller._on_audio_chunk(quiet)
+
+        # Max cap should force dispatch — never silently drop 20s of audio
+        controller._async_worker.schedule_transcribe.assert_called_once()
 
 
 class TestAutoRecovery:

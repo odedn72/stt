@@ -66,13 +66,14 @@ logger = logging.getLogger(__name__)
 # Speech-boundary dispatch constants (samples at 16 kHz)
 _SILENCE_CHUNKS_FOR_DISPATCH = 3  # 3 × 500ms = 1.5s silence triggers dispatch
 _MIN_DISPATCH_SAMPLES = 16_000  # 1.0s minimum buffer before dispatch allowed
-_MAX_BUFFER_SAMPLES = 16_000 * 20  # 20s cap for continuous speech (API max is 25s)
+_SPEECH_DURATION_SAMPLES = 16_000 * 3  # 3s of buffered speech triggers dispatch
+_MAX_BUFFER_SAMPLES = 16_000 * 20  # 20s safety cap (API max is 25s)
 
 # Speech detection: frame-level energy analysis
 _FRAME_DURATION_MS = 20  # 20ms frames for energy analysis
-_FRAME_ENERGY_THRESHOLD = 0.02  # Per-frame RMS above which a frame is "speech"
+_FRAME_ENERGY_THRESHOLD = 0.012  # Per-frame RMS above which a frame is "speech"
 _MIN_SPEECH_FRACTION = 0.10  # At least 10% of frames must have speech
-_SILENCE_RMS_FLOOR = 0.003  # Fast-path: below this, definitely silent
+_SILENCE_RMS_FLOOR = 0.005  # Fast-path: below this, definitely silent
 
 # Keychain key for the cloud API key
 _API_KEY_NAME = "api_key"
@@ -524,6 +525,7 @@ class AppController(QObject):
         self._detected_language = None
         self._speech_seen = False
         self._trailing_silent_chunks = 0
+        self._speech_start_samples = 0
 
         # Convert config EngineType → STT EngineType
         stt_engine_type = STTEngineType(self._settings.engine.value)
@@ -662,19 +664,36 @@ class AppController(QObject):
         self._buffered_samples += len(chunk)
 
         # Track speech boundaries
-        if self._has_speech(chunk):
+        chunk_rms = float(np.sqrt(np.mean(chunk**2)))
+        chunk_has_speech = self._has_speech(chunk)
+        logger.debug(
+            "Chunk: RMS=%.4f, speech=%s, seen=%s, trailing=%d",
+            chunk_rms,
+            chunk_has_speech,
+            self._speech_seen,
+            self._trailing_silent_chunks,
+        )
+        if chunk_has_speech:
+            if not self._speech_seen:
+                self._speech_start_samples = self._buffered_samples - len(chunk)
             self._speech_seen = True
             self._trailing_silent_chunks = 0
         elif self._speech_seen:
             self._trailing_silent_chunks += 1
 
-        # Dispatch on natural pause or max cap
-        if (
+        # Dispatch on natural pause, speech duration, or max cap
+        speech_boundary = (
             self._speech_seen
             and self._trailing_silent_chunks >= _SILENCE_CHUNKS_FOR_DISPATCH
             and self._buffered_samples >= _MIN_DISPATCH_SAMPLES
-        ) or self._buffered_samples >= _MAX_BUFFER_SAMPLES:
-            self._dispatch_transcription(speech_confirmed=self._speech_seen)
+        )
+        samples_since_speech = self._buffered_samples - self._speech_start_samples
+        speech_duration = self._speech_seen and samples_since_speech >= _SPEECH_DURATION_SAMPLES
+        max_cap = self._buffered_samples >= _MAX_BUFFER_SAMPLES
+        if speech_boundary or speech_duration or max_cap:
+            self._dispatch_transcription(
+                speech_confirmed=self._speech_seen or max_cap,
+            )
 
     @staticmethod
     def _has_speech(
@@ -742,6 +761,7 @@ class AppController(QObject):
         self._audio_buffer.clear()
         self._buffered_samples = 0
         self._speech_seen = False
+        self._speech_start_samples = 0
         self._trailing_silent_chunks = 0
 
         rms = float(np.sqrt(np.mean(audio**2)))
@@ -786,9 +806,10 @@ class AppController(QObject):
             return
 
         logger.info(
-            "Transcription result: lang=%s, text='%s'",
+            "Transcription result: lang=%s, len=%d, text='%s'",
             result.primary_language.value,
-            result.full_text[:100],
+            len(result.full_text),
+            result.full_text[:300],
         )
 
         text = filter_hallucinations(result.full_text)
@@ -838,6 +859,7 @@ class AppController(QObject):
             )
         else:
             # Plain text — inject it
+            logger.info("Injecting text: len=%d, text='%s'", len(text), text[:300])
             self._async_worker.schedule_inject_text(self._text_injector, text)
 
         self._maybe_finish_stop()
