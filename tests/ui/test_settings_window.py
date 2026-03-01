@@ -18,15 +18,13 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-import pytest
-
+from systemstt.config.models import EngineType, SettingsModel, WhisperModelSize
 from systemstt.ui.settings_window import SettingsWindow
-from systemstt.config.models import SettingsModel, EngineType, WhisperModelSize
-
 
 # ---------------------------------------------------------------------------
 # Window creation tests
 # ---------------------------------------------------------------------------
+
 
 class TestSettingsWindowCreation:
     """Tests for settings window creation."""
@@ -38,6 +36,7 @@ class TestSettingsWindowCreation:
 
     def test_window_is_qwidget(self) -> None:
         from PySide6.QtWidgets import QWidget
+
         settings = SettingsModel()
         window = SettingsWindow(settings=settings)
         assert isinstance(window, QWidget)
@@ -46,6 +45,7 @@ class TestSettingsWindowCreation:
 # ---------------------------------------------------------------------------
 # Tab management tests
 # ---------------------------------------------------------------------------
+
 
 class TestSettingsWindowTabs:
     """Tests for tab switching behavior."""
@@ -75,6 +75,7 @@ class TestSettingsWindowTabs:
 # Settings population tests
 # ---------------------------------------------------------------------------
 
+
 class TestSettingsWindowPopulation:
     """Tests for populating controls from the settings model."""
 
@@ -97,6 +98,7 @@ class TestSettingsWindowPopulation:
 # ---------------------------------------------------------------------------
 # Status indicator tests
 # ---------------------------------------------------------------------------
+
 
 class TestSettingsWindowStatusIndicators:
     """Tests for API and model status indicators."""
@@ -138,18 +140,23 @@ class TestSettingsWindowStatusIndicators:
 # Audio device list tests
 # ---------------------------------------------------------------------------
 
+
 class TestSettingsWindowAudioDevices:
     """Tests for audio device dropdown updates."""
 
     def test_update_audio_devices_with_list(self) -> None:
         settings = SettingsModel()
         window = SettingsWindow(settings=settings)
-        # Pass mock AudioDevice objects
-        devices = [
-            MagicMock(name="Built-in Mic", device_id=0, is_default=True),
-            MagicMock(name="USB Mic", device_id=1, is_default=False),
-        ]
-        window.update_audio_devices(devices)
+        # MagicMock(name=...) is special; set .name after construction
+        dev0 = MagicMock()
+        dev0.name = "Built-in Mic"
+        dev0.device_id = 0
+        dev0.is_default = True
+        dev1 = MagicMock()
+        dev1.name = "USB Mic"
+        dev1.device_id = 1
+        dev1.is_default = False
+        window.update_audio_devices([dev0, dev1])
 
     def test_update_audio_devices_empty_list(self) -> None:
         settings = SettingsModel()
@@ -160,6 +167,7 @@ class TestSettingsWindowAudioDevices:
 # ---------------------------------------------------------------------------
 # Audio level meter tests
 # ---------------------------------------------------------------------------
+
 
 class TestSettingsWindowAudioLevel:
     """Tests for the live audio level meter."""
@@ -174,6 +182,7 @@ class TestSettingsWindowAudioLevel:
 # ---------------------------------------------------------------------------
 # Signal tests
 # ---------------------------------------------------------------------------
+
 
 class TestSettingsWindowSignals:
     """Tests that required signals are defined."""
