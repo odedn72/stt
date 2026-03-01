@@ -29,6 +29,7 @@ from systemstt.controller import (
     AudioBridge,
     _CLOUD_BUFFER_SAMPLES,
     _LOCAL_BUFFER_SAMPLES,
+    _SILENCE_RMS_THRESHOLD,
 )
 from systemstt.stt.base import (
     DetectedLanguage,
@@ -55,6 +56,12 @@ def qapp() -> QApplication:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _make_audio_chunk(num_samples: int) -> np.ndarray:
+    """Create a non-silent audio chunk (sine wave) for tests."""
+    t = np.linspace(0, num_samples / 16000, num_samples, endpoint=False, dtype=np.float32)
+    return (0.5 * np.sin(2 * np.pi * 440 * t)).astype(np.float32)
 
 
 def _make_transcription_result(
@@ -613,8 +620,7 @@ class TestAudioBuffering:
         controller._on_engine_ready()
 
         # Send enough data to cross the 3s threshold (cloud default)
-        chunk_size = _CLOUD_BUFFER_SAMPLES + 1000
-        chunk = np.zeros(chunk_size, dtype=np.float32)
+        chunk = _make_audio_chunk(_CLOUD_BUFFER_SAMPLES + 1000)
         controller._on_audio_chunk(chunk)
 
         controller._async_worker.schedule_transcribe.assert_called_once()
@@ -813,8 +819,8 @@ class TestStopWithFlush:
         controller._on_dictation_toggle()
         controller._on_engine_ready()
 
-        # Buffer some audio (below threshold)
-        chunk = np.zeros(8000, dtype=np.float32)
+        # Buffer some audio (below threshold, non-silent)
+        chunk = _make_audio_chunk(8000)
         controller._on_audio_chunk(chunk)
         assert controller._buffered_samples == 8000
 
@@ -843,10 +849,10 @@ class TestStopWithFlush:
         mock_engine = MagicMock()
         controller._engine_manager.active_engine = mock_engine
 
-        # Go ACTIVE, buffer audio, stop
+        # Go ACTIVE, buffer audio (non-silent), stop
         controller._on_dictation_toggle()
         controller._on_engine_ready()
-        controller._on_audio_chunk(np.zeros(8000, dtype=np.float32))
+        controller._on_audio_chunk(_make_audio_chunk(8000))
         controller._on_dictation_toggle()
         assert controller._state_machine.state == DictationState.STOPPING
 
@@ -1053,6 +1059,310 @@ class TestBufferThreshold:
         )
         controller = AppController(**mock_deps)
         assert controller._buffer_threshold == _LOCAL_BUFFER_SAMPLES
+
+
+class TestHallucinationFiltering:
+    """Tests for hallucination filtering in transcription result handling."""
+
+    @patch("systemstt.controller.MenuBarWidget")
+    @patch("systemstt.controller.FloatingPill")
+    @patch("systemstt.controller.AudioRecorder")
+    @patch("systemstt.controller.EngineManager")
+    def test_hallucination_text_not_injected(
+        self,
+        _mock_em: MagicMock,
+        _mock_rec: MagicMock,
+        _mock_pill: MagicMock,
+        _mock_menu: MagicMock,
+        mock_deps: dict[str, Any],
+    ) -> None:
+        """Known hallucination patterns should not be injected as text."""
+        controller = AppController(**mock_deps)
+        controller._async_worker = MagicMock()
+        controller._async_worker.schedule_activate_engine = MagicMock()
+
+        controller._on_dictation_toggle()
+        controller._on_engine_ready()
+
+        result = _make_transcription_result("Thank you for watching.")
+        controller._on_transcription_result(result)
+
+        controller._async_worker.schedule_inject_text.assert_not_called()
+
+    @patch("systemstt.controller.MenuBarWidget")
+    @patch("systemstt.controller.FloatingPill")
+    @patch("systemstt.controller.AudioRecorder")
+    @patch("systemstt.controller.EngineManager")
+    def test_trailing_artifact_stripped_before_injection(
+        self,
+        _mock_em: MagicMock,
+        _mock_rec: MagicMock,
+        _mock_pill: MagicMock,
+        _mock_menu: MagicMock,
+        mock_deps: dict[str, Any],
+    ) -> None:
+        """Trailing hallucination artifacts should be stripped from injected text."""
+        controller = AppController(**mock_deps)
+        controller._async_worker = MagicMock()
+        controller._async_worker.schedule_activate_engine = MagicMock()
+
+        controller._on_dictation_toggle()
+        controller._on_engine_ready()
+
+        result = _make_transcription_result("Meeting at 3pm. Thank you for watching.")
+        controller._on_transcription_result(result)
+
+        controller._async_worker.schedule_inject_text.assert_called_once_with(
+            mock_deps["text_injector"], "Meeting at 3pm.",
+        )
+
+    @patch("systemstt.controller.MenuBarWidget")
+    @patch("systemstt.controller.FloatingPill")
+    @patch("systemstt.controller.AudioRecorder")
+    @patch("systemstt.controller.EngineManager")
+    def test_normal_text_passes_through(
+        self,
+        _mock_em: MagicMock,
+        _mock_rec: MagicMock,
+        _mock_pill: MagicMock,
+        _mock_menu: MagicMock,
+        mock_deps: dict[str, Any],
+    ) -> None:
+        """Normal text should pass through the filter unchanged."""
+        controller = AppController(**mock_deps)
+        controller._async_worker = MagicMock()
+        controller._async_worker.schedule_activate_engine = MagicMock()
+
+        controller._on_dictation_toggle()
+        controller._on_engine_ready()
+
+        result = _make_transcription_result("Send the email to John")
+        controller._on_transcription_result(result)
+
+        controller._async_worker.schedule_inject_text.assert_called_once_with(
+            mock_deps["text_injector"], "Send the email to John",
+        )
+
+
+class TestContextPromptTracking:
+    """Tests for context prompt tracking across transcription chunks."""
+
+    @patch("systemstt.controller.MenuBarWidget")
+    @patch("systemstt.controller.FloatingPill")
+    @patch("systemstt.controller.AudioRecorder")
+    @patch("systemstt.controller.EngineManager")
+    def test_first_chunk_has_no_context(
+        self,
+        _mock_em: MagicMock,
+        _mock_rec: MagicMock,
+        _mock_pill: MagicMock,
+        _mock_menu: MagicMock,
+        mock_deps: dict[str, Any],
+    ) -> None:
+        """First transcription dispatch should have no context_prompt."""
+        controller = AppController(**mock_deps)
+        controller._async_worker = MagicMock()
+        controller._async_worker.schedule_activate_engine = MagicMock()
+
+        mock_engine = MagicMock()
+        controller._engine_manager.active_engine = mock_engine
+
+        # Go ACTIVE
+        controller._on_dictation_toggle()
+        controller._on_engine_ready()
+
+        # Send enough non-silent data to cross threshold
+        chunk = _make_audio_chunk(_CLOUD_BUFFER_SAMPLES + 1000)
+        controller._on_audio_chunk(chunk)
+
+        call_kwargs = controller._async_worker.schedule_transcribe.call_args
+        assert call_kwargs[1]["context_prompt"] is None
+
+    @patch("systemstt.controller.MenuBarWidget")
+    @patch("systemstt.controller.FloatingPill")
+    @patch("systemstt.controller.AudioRecorder")
+    @patch("systemstt.controller.EngineManager")
+    def test_second_chunk_receives_previous_text(
+        self,
+        _mock_em: MagicMock,
+        _mock_rec: MagicMock,
+        _mock_pill: MagicMock,
+        _mock_menu: MagicMock,
+        mock_deps: dict[str, Any],
+    ) -> None:
+        """After first result, second dispatch should include previous text as context."""
+        controller = AppController(**mock_deps)
+        controller._async_worker = MagicMock()
+        controller._async_worker.schedule_activate_engine = MagicMock()
+
+        mock_engine = MagicMock()
+        controller._engine_manager.active_engine = mock_engine
+
+        # Go ACTIVE
+        controller._on_dictation_toggle()
+        controller._on_engine_ready()
+
+        # First chunk dispatched (non-silent)
+        chunk = _make_audio_chunk(_CLOUD_BUFFER_SAMPLES + 1000)
+        controller._on_audio_chunk(chunk)
+
+        # Deliver first transcription result
+        result = _make_transcription_result("Hello world")
+        controller._on_transcription_result(result)
+
+        # Second chunk dispatched
+        controller._on_audio_chunk(chunk)
+
+        # The second schedule_transcribe call should have context_prompt
+        assert controller._async_worker.schedule_transcribe.call_count == 2
+        second_call = controller._async_worker.schedule_transcribe.call_args
+        assert second_call[1]["context_prompt"] == "Hello world"
+
+    @patch("systemstt.controller.MenuBarWidget")
+    @patch("systemstt.controller.FloatingPill")
+    @patch("systemstt.controller.AudioRecorder")
+    @patch("systemstt.controller.EngineManager")
+    def test_context_resets_on_new_session(
+        self,
+        _mock_em: MagicMock,
+        _mock_rec: MagicMock,
+        _mock_pill: MagicMock,
+        _mock_menu: MagicMock,
+        mock_deps: dict[str, Any],
+    ) -> None:
+        """Context should reset when a new dictation session starts."""
+        controller = AppController(**mock_deps)
+        controller._async_worker = MagicMock()
+        controller._async_worker.schedule_activate_engine = MagicMock()
+
+        mock_engine = MagicMock()
+        controller._engine_manager.active_engine = mock_engine
+
+        # First session: go ACTIVE, get a result
+        controller._on_dictation_toggle()
+        controller._on_engine_ready()
+
+        result = _make_transcription_result("first session text")
+        controller._pending_transcriptions = 1
+        controller._on_transcription_result(result)
+        assert controller._last_transcription_text == "first session text"
+
+        # Stop and start new session
+        controller._on_dictation_toggle()  # stop
+        controller._on_dictation_toggle()  # start new session
+
+        assert controller._last_transcription_text is None
+
+
+class TestSilenceDetection:
+    """Tests for cloud API silence detection."""
+
+    @patch("systemstt.controller.MenuBarWidget")
+    @patch("systemstt.controller.FloatingPill")
+    @patch("systemstt.controller.AudioRecorder")
+    @patch("systemstt.controller.EngineManager")
+    def test_silent_chunk_skipped_for_cloud(
+        self,
+        _mock_em: MagicMock,
+        _mock_rec: MagicMock,
+        _mock_pill: MagicMock,
+        _mock_menu: MagicMock,
+        mock_deps: dict[str, Any],
+    ) -> None:
+        """Silent audio should not be dispatched to the cloud API."""
+        controller = AppController(**mock_deps)
+        controller._async_worker = MagicMock()
+        controller._async_worker.schedule_activate_engine = MagicMock()
+
+        mock_engine = MagicMock()
+        controller._engine_manager.active_engine = mock_engine
+
+        # Go ACTIVE (default engine is cloud_api)
+        controller._on_dictation_toggle()
+        controller._on_engine_ready()
+
+        # Send silent audio above threshold size
+        silent_chunk = np.zeros(_CLOUD_BUFFER_SAMPLES + 1000, dtype=np.float32)
+        controller._on_audio_chunk(silent_chunk)
+
+        # Should NOT dispatch transcription for silent audio
+        controller._async_worker.schedule_transcribe.assert_not_called()
+
+    @patch("systemstt.controller.MenuBarWidget")
+    @patch("systemstt.controller.FloatingPill")
+    @patch("systemstt.controller.AudioRecorder")
+    @patch("systemstt.controller.EngineManager")
+    def test_non_silent_chunk_dispatched_for_cloud(
+        self,
+        _mock_em: MagicMock,
+        _mock_rec: MagicMock,
+        _mock_pill: MagicMock,
+        _mock_menu: MagicMock,
+        mock_deps: dict[str, Any],
+    ) -> None:
+        """Non-silent audio should be dispatched to the cloud API."""
+        controller = AppController(**mock_deps)
+        controller._async_worker = MagicMock()
+        controller._async_worker.schedule_activate_engine = MagicMock()
+
+        mock_engine = MagicMock()
+        controller._engine_manager.active_engine = mock_engine
+
+        # Go ACTIVE
+        controller._on_dictation_toggle()
+        controller._on_engine_ready()
+
+        # Send a loud sine wave above threshold size
+        num_samples = _CLOUD_BUFFER_SAMPLES + 1000
+        t = np.linspace(0, num_samples / 16000, num_samples, endpoint=False, dtype=np.float32)
+        loud_chunk = (0.5 * np.sin(2 * np.pi * 440 * t)).astype(np.float32)
+        controller._on_audio_chunk(loud_chunk)
+
+        controller._async_worker.schedule_transcribe.assert_called_once()
+
+    @patch("systemstt.controller.MenuBarWidget")
+    @patch("systemstt.controller.FloatingPill")
+    @patch("systemstt.controller.AudioRecorder")
+    @patch("systemstt.controller.EngineManager")
+    def test_silent_chunk_not_skipped_for_local_whisper(
+        self,
+        _mock_em: MagicMock,
+        _mock_rec: MagicMock,
+        _mock_pill: MagicMock,
+        _mock_menu: MagicMock,
+        mock_deps: dict[str, Any],
+    ) -> None:
+        """Local Whisper has built-in VAD, so silence should still be dispatched."""
+        mock_deps["settings_store"].load.return_value = SettingsModel(
+            engine=ConfigEngineType.LOCAL_WHISPER,
+        )
+        controller = AppController(**mock_deps)
+        controller._async_worker = MagicMock()
+        controller._async_worker.schedule_activate_engine = MagicMock()
+
+        mock_engine = MagicMock()
+        controller._engine_manager.active_engine = mock_engine
+
+        # Go ACTIVE
+        controller._on_dictation_toggle()
+        controller._on_engine_ready()
+
+        # Send silent audio above threshold size
+        silent_chunk = np.zeros(_LOCAL_BUFFER_SAMPLES + 1000, dtype=np.float32)
+        controller._on_audio_chunk(silent_chunk)
+
+        # Local Whisper should still get the audio (VAD handles it internally)
+        controller._async_worker.schedule_transcribe.assert_called_once()
+
+    def test_is_silent_static_method(self) -> None:
+        """Test the _is_silent static method directly."""
+        assert AppController._is_silent(np.zeros(1000, dtype=np.float32)) is True
+
+        loud = np.full(1000, 0.5, dtype=np.float32)
+        assert AppController._is_silent(loud) is False
+
+        empty = np.array([], dtype=np.float32)
+        assert AppController._is_silent(empty) is True
 
 
 class TestAutoRecovery:

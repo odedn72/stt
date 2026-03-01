@@ -587,3 +587,99 @@ class TestCloudAPIEngineEdgeCases:
         wav = _audio_to_wav_bytes(audio)
         expected_len = 44 + num_samples * 2
         assert len(wav) == expected_len
+
+
+# ---------------------------------------------------------------------------
+# CloudAPIEngine accuracy parameter tests
+# ---------------------------------------------------------------------------
+
+class TestCloudAPIEngineAccuracyParams:
+    """Tests for temperature and other accuracy parameters."""
+
+    @pytest.mark.asyncio
+    @patch("systemstt.stt.cloud_api.httpx.AsyncClient")
+    async def test_temperature_zero_in_request(
+        self, mock_client_cls: MagicMock, sine_wave_chunk: np.ndarray
+    ) -> None:
+        """Temperature should be included in the API request data."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "text": "test", "language": "en",
+            "segments": [{"text": "test", "start": 0.0, "end": 1.0, "avg_logprob": -0.1}],
+        }
+        mock_response.raise_for_status = MagicMock()
+
+        mock_client = AsyncMock()
+        mock_client.post.return_value = mock_response
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        mock_client_cls.return_value = mock_client
+
+        config = CloudAPIConfig(api_key="sk-test")
+        engine = CloudAPIEngine(config)
+        await engine.initialize()
+        await engine.transcribe(sine_wave_chunk)
+
+        # Check the data dict passed to post()
+        call_kwargs = mock_client.post.call_args
+        data = call_kwargs[1]["data"] if "data" in call_kwargs[1] else call_kwargs.kwargs["data"]
+        assert data["temperature"] == "0"
+
+    @pytest.mark.asyncio
+    @patch("systemstt.stt.cloud_api.httpx.AsyncClient")
+    async def test_default_prompt_without_context(
+        self, mock_client_cls: MagicMock, sine_wave_chunk: np.ndarray
+    ) -> None:
+        """Without context_prompt, the default bilingual prompt is used."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "text": "test", "language": "en",
+            "segments": [{"text": "test", "start": 0.0, "end": 1.0, "avg_logprob": -0.1}],
+        }
+        mock_response.raise_for_status = MagicMock()
+
+        mock_client = AsyncMock()
+        mock_client.post.return_value = mock_response
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        mock_client_cls.return_value = mock_client
+
+        config = CloudAPIConfig(api_key="sk-test")
+        engine = CloudAPIEngine(config)
+        await engine.initialize()
+        await engine.transcribe(sine_wave_chunk)
+
+        call_kwargs = mock_client.post.call_args
+        data = call_kwargs[1]["data"] if "data" in call_kwargs[1] else call_kwargs.kwargs["data"]
+        assert data["prompt"] == engine._DEFAULT_PROMPT
+
+    @pytest.mark.asyncio
+    @patch("systemstt.stt.cloud_api.httpx.AsyncClient")
+    async def test_context_prompt_used_in_request(
+        self, mock_client_cls: MagicMock, sine_wave_chunk: np.ndarray
+    ) -> None:
+        """When context_prompt is provided, it replaces the default prompt."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "text": "continued text", "language": "en",
+            "segments": [{"text": "continued text", "start": 0.0, "end": 1.0, "avg_logprob": -0.1}],
+        }
+        mock_response.raise_for_status = MagicMock()
+
+        mock_client = AsyncMock()
+        mock_client.post.return_value = mock_response
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        mock_client_cls.return_value = mock_client
+
+        config = CloudAPIConfig(api_key="sk-test")
+        engine = CloudAPIEngine(config)
+        await engine.initialize()
+        await engine.transcribe(sine_wave_chunk, context_prompt="previous text here")
+
+        call_kwargs = mock_client.post.call_args
+        data = call_kwargs[1]["data"] if "data" in call_kwargs[1] else call_kwargs.kwargs["data"]
+        assert data["prompt"] == "previous text here"

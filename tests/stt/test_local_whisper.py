@@ -291,3 +291,130 @@ class TestLocalWhisperEngineModelManagement:
         with patch.object(engine, "download_model", new_callable=AsyncMock) as mock_dl:
             await engine.download_model(on_progress=progress_cb)
             mock_dl.assert_called_once_with(on_progress=progress_cb)
+
+
+# ---------------------------------------------------------------------------
+# LocalWhisperEngine accuracy parameter tests
+# ---------------------------------------------------------------------------
+
+class TestLocalWhisperEngineAccuracyParams:
+    """Tests for VAD, temperature, and hallucination threshold parameters."""
+
+    @pytest.mark.asyncio
+    @patch("systemstt.stt.local_whisper.WhisperModel")
+    async def test_vad_filter_enabled(
+        self, mock_model_cls: MagicMock, sine_wave_chunk: np.ndarray
+    ) -> None:
+        """VAD filter should be enabled to suppress hallucinations on silence."""
+        mock_model = mock_model_cls.return_value
+        mock_model.transcribe.return_value = ([], MagicMock(language="en"))
+
+        config = LocalWhisperConfig()
+        engine = LocalWhisperEngine(config)
+        await engine.initialize()
+        await engine.transcribe(sine_wave_chunk)
+
+        call_kwargs = mock_model.transcribe.call_args[1]
+        assert call_kwargs["vad_filter"] is True
+
+    @pytest.mark.asyncio
+    @patch("systemstt.stt.local_whisper.WhisperModel")
+    async def test_vad_parameters_set(
+        self, mock_model_cls: MagicMock, sine_wave_chunk: np.ndarray
+    ) -> None:
+        """VAD parameters should configure min silence duration."""
+        mock_model = mock_model_cls.return_value
+        mock_model.transcribe.return_value = ([], MagicMock(language="en"))
+
+        config = LocalWhisperConfig()
+        engine = LocalWhisperEngine(config)
+        await engine.initialize()
+        await engine.transcribe(sine_wave_chunk)
+
+        call_kwargs = mock_model.transcribe.call_args[1]
+        assert call_kwargs["vad_parameters"] == {"min_silence_duration_ms": 500}
+
+    @pytest.mark.asyncio
+    @patch("systemstt.stt.local_whisper.WhisperModel")
+    async def test_temperature_zero(
+        self, mock_model_cls: MagicMock, sine_wave_chunk: np.ndarray
+    ) -> None:
+        """Temperature should be 0.0 for deterministic output."""
+        mock_model = mock_model_cls.return_value
+        mock_model.transcribe.return_value = ([], MagicMock(language="en"))
+
+        config = LocalWhisperConfig()
+        engine = LocalWhisperEngine(config)
+        await engine.initialize()
+        await engine.transcribe(sine_wave_chunk)
+
+        call_kwargs = mock_model.transcribe.call_args[1]
+        assert call_kwargs["temperature"] == 0.0
+
+    @pytest.mark.asyncio
+    @patch("systemstt.stt.local_whisper.WhisperModel")
+    async def test_compression_ratio_threshold(
+        self, mock_model_cls: MagicMock, sine_wave_chunk: np.ndarray
+    ) -> None:
+        """Compression ratio threshold should be set to filter repetitive output."""
+        mock_model = mock_model_cls.return_value
+        mock_model.transcribe.return_value = ([], MagicMock(language="en"))
+
+        config = LocalWhisperConfig()
+        engine = LocalWhisperEngine(config)
+        await engine.initialize()
+        await engine.transcribe(sine_wave_chunk)
+
+        call_kwargs = mock_model.transcribe.call_args[1]
+        assert call_kwargs["compression_ratio_threshold"] == 2.4
+
+    @pytest.mark.asyncio
+    @patch("systemstt.stt.local_whisper.WhisperModel")
+    async def test_no_speech_threshold(
+        self, mock_model_cls: MagicMock, sine_wave_chunk: np.ndarray
+    ) -> None:
+        """No-speech threshold should be set to suppress empty segments."""
+        mock_model = mock_model_cls.return_value
+        mock_model.transcribe.return_value = ([], MagicMock(language="en"))
+
+        config = LocalWhisperConfig()
+        engine = LocalWhisperEngine(config)
+        await engine.initialize()
+        await engine.transcribe(sine_wave_chunk)
+
+        call_kwargs = mock_model.transcribe.call_args[1]
+        assert call_kwargs["no_speech_threshold"] == 0.6
+
+    @pytest.mark.asyncio
+    @patch("systemstt.stt.local_whisper.WhisperModel")
+    async def test_default_initial_prompt_without_context(
+        self, mock_model_cls: MagicMock, sine_wave_chunk: np.ndarray
+    ) -> None:
+        """Without context_prompt, the default bilingual prompt is used."""
+        mock_model = mock_model_cls.return_value
+        mock_model.transcribe.return_value = ([], MagicMock(language="en"))
+
+        config = LocalWhisperConfig()
+        engine = LocalWhisperEngine(config)
+        await engine.initialize()
+        await engine.transcribe(sine_wave_chunk)
+
+        call_kwargs = mock_model.transcribe.call_args[1]
+        assert call_kwargs["initial_prompt"] == engine._DEFAULT_PROMPT
+
+    @pytest.mark.asyncio
+    @patch("systemstt.stt.local_whisper.WhisperModel")
+    async def test_context_prompt_used_as_initial_prompt(
+        self, mock_model_cls: MagicMock, sine_wave_chunk: np.ndarray
+    ) -> None:
+        """When context_prompt is provided, it replaces the default initial_prompt."""
+        mock_model = mock_model_cls.return_value
+        mock_model.transcribe.return_value = ([], MagicMock(language="en"))
+
+        config = LocalWhisperConfig()
+        engine = LocalWhisperEngine(config)
+        await engine.initialize()
+        await engine.transcribe(sine_wave_chunk, context_prompt="previous text here")
+
+        call_kwargs = mock_model.transcribe.call_args[1]
+        assert call_kwargs["initial_prompt"] == "previous text here"

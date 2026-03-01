@@ -134,6 +134,7 @@ class LocalWhisperEngine(STTEngine):
         self,
         audio: np.ndarray,
         language_hint: Optional[DetectedLanguage] = None,
+        context_prompt: Optional[str] = None,
     ) -> TranscriptionResult:
         """Transcribe audio using the local Whisper model.
 
@@ -151,7 +152,7 @@ class LocalWhisperEngine(STTEngine):
             loop = asyncio.get_event_loop()
             segments_list, info = await loop.run_in_executor(
                 None,
-                lambda: self._do_transcribe(audio, language_hint),
+                lambda: self._do_transcribe(audio, language_hint, context_prompt),
             )
 
             processing_time_ms = (time.monotonic() - start_time) * 1000
@@ -271,16 +272,25 @@ class LocalWhisperEngine(STTEngine):
             result = await self.transcribe(combined, language_hint=language_hint)
             yield result
 
+    _DEFAULT_PROMPT = "Transcribe in English or Hebrew (עברית)."
+
     def _do_transcribe(
         self,
         audio: np.ndarray,
         language_hint: Optional[DetectedLanguage],
+        context_prompt: Optional[str] = None,
     ) -> tuple[list[Any], Any]:
         """Run transcription synchronously (called in thread)."""
         assert self._model is not None
 
         kwargs: dict[str, Any] = {
             "beam_size": self._config.beam_size,
+            "initial_prompt": context_prompt if context_prompt else self._DEFAULT_PROMPT,
+            "vad_filter": True,
+            "vad_parameters": {"min_silence_duration_ms": 500},
+            "temperature": 0.0,
+            "compression_ratio_threshold": 2.4,
+            "no_speech_threshold": 0.6,
         }
         if language_hint is not None and language_hint != DetectedLanguage.UNKNOWN:
             kwargs["language"] = language_hint.value

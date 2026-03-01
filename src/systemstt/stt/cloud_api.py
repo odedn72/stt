@@ -150,6 +150,7 @@ class CloudAPIEngine(STTEngine):
         self,
         audio: np.ndarray,
         language_hint: Optional[DetectedLanguage] = None,
+        context_prompt: Optional[str] = None,
     ) -> TranscriptionResult:
         """Transcribe audio using the cloud API with retry logic."""
         if self._state != EngineState.READY:
@@ -161,7 +162,9 @@ class CloudAPIEngine(STTEngine):
         start_time = time.monotonic()
 
         try:
-            result = await self._transcribe_with_retry(audio, language_hint)
+            result = await self._transcribe_with_retry(
+                audio, language_hint, context_prompt,
+            )
             return result
         finally:
             if self._state == EngineState.TRANSCRIBING:
@@ -237,6 +240,7 @@ class CloudAPIEngine(STTEngine):
         self,
         audio: np.ndarray,
         language_hint: Optional[DetectedLanguage] = None,
+        context_prompt: Optional[str] = None,
     ) -> TranscriptionResult:
         """Attempt transcription with retry logic."""
         last_exception: Exception | None = None
@@ -244,7 +248,9 @@ class CloudAPIEngine(STTEngine):
 
         for attempt in range(self._config.max_retries):
             try:
-                return await self._do_transcribe(audio, language_hint, start_time)
+                return await self._do_transcribe(
+                    audio, language_hint, start_time, context_prompt,
+                )
             except (APITimeoutError, APIRateLimitError, APIUnavailableError) as exc:
                 last_exception = exc
                 if attempt < self._config.max_retries - 1:
@@ -263,11 +269,14 @@ class CloudAPIEngine(STTEngine):
             raise last_exception
         raise TranscriptionError("Transcription failed after all retries")
 
+    _DEFAULT_PROMPT = "Transcribe in English or Hebrew (עברית)."
+
     async def _do_transcribe(
         self,
         audio: np.ndarray,
         language_hint: Optional[DetectedLanguage],
         start_time: float,
+        context_prompt: Optional[str] = None,
     ) -> TranscriptionResult:
         """Perform a single transcription attempt."""
         wav_bytes = _audio_to_wav_bytes(audio)
@@ -278,6 +287,8 @@ class CloudAPIEngine(STTEngine):
         data: dict[str, str] = {
             "model": self._config.model,
             "response_format": "verbose_json",
+            "prompt": context_prompt if context_prompt else self._DEFAULT_PROMPT,
+            "temperature": "0",
         }
         if language_hint is not None and language_hint != DetectedLanguage.UNKNOWN:
             data["language"] = language_hint.value

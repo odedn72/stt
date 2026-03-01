@@ -49,6 +49,7 @@ from systemstt.stt.local_whisper import (
     LocalWhisperConfig,
     WhisperModelSize as STTWhisperModelSize,
 )
+from systemstt.stt.postprocess import filter_hallucinations
 from systemstt.ui.floating_pill import FloatingPill
 from systemstt.ui.menu_bar import MenuBarWidget
 
@@ -57,6 +58,9 @@ logger = logging.getLogger(__name__)
 # Audio buffer thresholds (samples at 16 kHz)
 _CLOUD_BUFFER_SAMPLES = 16_000 * 3  # 3 seconds
 _LOCAL_BUFFER_SAMPLES = 16_000 * 5  # 5 seconds
+
+# RMS threshold below which audio is considered silent (~-40 dBFS)
+_SILENCE_RMS_THRESHOLD = 0.01
 
 # Keychain key for the cloud API key
 _API_KEY_NAME = "api_key"
@@ -163,12 +167,17 @@ class AsyncWorker(QThread):
         engine: STTEngine,
         audio: np.ndarray,
         language_hint: Optional[DetectedLanguage] = None,
+        context_prompt: Optional[str] = None,
     ) -> None:
         """Transcribe audio asynchronously."""
 
         async def _transcribe() -> None:
             try:
-                result = await engine.transcribe(audio, language_hint=language_hint)
+                result = await engine.transcribe(
+                    audio,
+                    language_hint=language_hint,
+                    context_prompt=context_prompt,
+                )
                 self.transcription_result.emit(result)
             except Exception as exc:
                 self.transcription_error.emit(str(exc))
@@ -280,6 +289,7 @@ class AppController(QObject):
         self._pending_transcriptions: int = 0
         self._elapsed_seconds: int = 0
         self._current_language: str = "EN"
+        self._last_transcription_text: Optional[str] = None
 
         # -- Async worker -----------------------------------------------------
         self._async_worker = AsyncWorker(self)
@@ -493,6 +503,7 @@ class AppController(QObject):
         self._buffered_samples = 0
         self._pending_transcriptions = 0
         self._elapsed_seconds = 0
+        self._last_transcription_text = None
 
         # Convert config EngineType → STT EngineType
         stt_engine_type = STTEngineType(self._settings.engine.value)
@@ -631,6 +642,14 @@ class AppController(QObject):
         if self._buffered_samples >= self._buffer_threshold:
             self._dispatch_transcription()
 
+    @staticmethod
+    def _is_silent(audio: np.ndarray) -> bool:
+        """Return True if the audio chunk is below the silence threshold."""
+        if len(audio) == 0:
+            return True
+        rms = float(np.sqrt(np.mean(audio ** 2)))
+        return rms < _SILENCE_RMS_THRESHOLD
+
     def _dispatch_transcription(self) -> None:
         """Concatenate buffered audio and dispatch for transcription."""
         if not self._audio_buffer:
@@ -650,13 +669,24 @@ class AppController(QObject):
         self._audio_buffer.clear()
         self._buffered_samples = 0
 
+        # Skip silent chunks for cloud API (saves API calls + avoids hallucinations).
+        # Local Whisper has built-in VAD, so it handles silence internally.
+        if (
+            self._settings.engine == ConfigEngineType.CLOUD_API
+            and self._is_silent(audio)
+        ):
+            logger.debug("Skipping silent audio chunk for cloud API")
+            return
+
         engine = self._engine_manager.active_engine
         if engine is None:
             logger.warning("No active engine for transcription")
             return
 
         self._pending_transcriptions += 1
-        self._async_worker.schedule_transcribe(engine, audio)
+        self._async_worker.schedule_transcribe(
+            engine, audio, context_prompt=self._last_transcription_text,
+        )
 
     # =====================================================================
     # Transcription result handling
@@ -670,10 +700,13 @@ class AppController(QObject):
             self._maybe_finish_stop()
             return
 
-        text = result.full_text.strip()
+        text = filter_hallucinations(result.full_text)
         if not text:
             self._maybe_finish_stop()
             return
+
+        # Track context for next transcription chunk
+        self._last_transcription_text = text
 
         # Update detected language
         if result.primary_language == DetectedLanguage.HEBREW:
@@ -907,15 +940,26 @@ class AppController(QObject):
             return
 
         self._settings = self._settings.model_copy(
-            update={"engine": engine_name},
+            update={"engine": ConfigEngineType(engine_name)},
         )
         self._settings_store.save(self._settings)
         # Engine will be activated on next dictation start
 
     def _on_api_key_changed(self, api_key: str) -> None:
         """Store the API key in the keychain and update engine config."""
-        self._secure_store.set(_API_KEY_NAME, api_key)
-        self._engine_manager.update_cloud_config(self._build_cloud_config())
+        try:
+            self._secure_store.set(_API_KEY_NAME, api_key)
+        except Exception:
+            logger.exception("Failed to store API key in keychain")
+        config = self._build_cloud_config()
+        # Ensure the key we just received is used even if keychain read lags
+        if api_key and not config.api_key:
+            config = CloudAPIConfig(
+                api_key=api_key,
+                api_base_url=config.api_base_url,
+                model=config.model,
+            )
+        self._engine_manager.update_cloud_config(config)
 
     def _on_model_download_requested(self, model_name: str) -> None:
         """Download a Whisper model asynchronously."""

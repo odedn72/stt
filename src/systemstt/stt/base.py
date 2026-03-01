@@ -93,6 +93,7 @@ class STTEngine(ABC):
         self,
         audio: np.ndarray,
         language_hint: Optional[DetectedLanguage] = None,
+        context_prompt: Optional[str] = None,
     ) -> TranscriptionResult:
         """Transcribe audio data to text."""
         ...
