@@ -65,19 +65,51 @@ def main() -> None:
         name="final-log-flush",
     )
 
-    logger.info("SystemSTT v%s ready", __version__)
+    # 4. Create Qt application (must exist before any QWidget)
+    from PySide6.QtWidgets import QApplication
 
-    # The actual Qt application setup will be added in later phases.
-    # When the Qt app is wired in, the pattern will be:
-    #
-    #   app = QApplication(sys.argv)
-    #   ...create components...
-    #   shutdown_manager.register(audio_recorder.stop, priority=10, name="stop-audio")
-    #   shutdown_manager.register(stt_engine.shutdown, priority=20, name="release-stt")
-    #   shutdown_manager.register(hotkey_manager.unregister, priority=30, name="unregister-hotkey")
-    #   shutdown_manager.register(settings_store.save, priority=50, name="save-settings")
-    #   app.aboutToQuit.connect(shutdown_manager.shutdown)
-    #   sys.exit(app.exec())
+    app = QApplication(sys.argv)
+    app.setQuitOnLastWindowClosed(False)  # Keep running with only tray icon
+    app.setApplicationName("SystemSTT")
+
+    # 5. Apply global theme stylesheet
+    from systemstt.ui.theme import generate_qss
+
+    app.setStyleSheet(generate_qss())
+
+    # 6. Create stores
+    from systemstt.config.store import SettingsStore
+    from systemstt.platform.macos.keychain import MacOSKeychainStore
+
+    settings_store = SettingsStore()
+    secure_store = MacOSKeychainStore()
+
+    # 7. Create platform services
+    from systemstt.platform.macos.hotkey_manager import MacOSHotkeyManager
+    from systemstt.platform.macos.text_injector import MacOSTextInjector
+
+    hotkey_manager = MacOSHotkeyManager()
+    text_injector = MacOSTextInjector()
+
+    # 8. Create and start the app controller (orchestrator)
+    from systemstt.controller import AppController
+
+    controller = AppController(
+        settings_store=settings_store,
+        secure_store=secure_store,
+        shutdown_manager=shutdown_manager,
+        hotkey_manager=hotkey_manager,
+        text_injector=text_injector,
+    )
+    controller.start()
+
+    # 9. Connect graceful shutdown to Qt's aboutToQuit signal
+    app.aboutToQuit.connect(shutdown_manager.shutdown)
+
+    logger.info("SystemSTT v%s ready — entering event loop", __version__)
+
+    # 10. Enter the Qt event loop
+    sys.exit(app.exec())
 
 
 if __name__ == "__main__":
