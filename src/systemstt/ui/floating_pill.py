@@ -285,6 +285,7 @@ class FloatingPill(QWidget):
 
         self._position_to_default_if_needed()
         self.show()
+        self._raise_without_activating()
         logger.debug("Floating pill shown: language=%s, engine=%s", language, engine)
 
     def hide_pill(self) -> None:
@@ -437,6 +438,39 @@ class FloatingPill(QWidget):
         super().mouseReleaseEvent(event)  # type: ignore[arg-type]
 
     # --- Internal helpers ---
+
+    def _raise_without_activating(self) -> None:
+        """Bring the window to front without stealing focus (macOS).
+
+        Sets the native NSWindow to floating level with hidesOnDeactivate
+        disabled, then uses orderFrontRegardless() to show it without
+        activating the application.
+        """
+        import os
+        import sys
+
+        # Skip native path in offscreen/test mode or non-macOS
+        if os.environ.get("QT_QPA_PLATFORM") == "offscreen" or sys.platform != "darwin":
+            return
+
+        try:
+            import ctypes
+
+            import objc  # type: ignore[import-untyped]
+
+            win_id = int(self.winId())
+            if win_id == 0:
+                self.raise_()
+                return
+
+            ptr = ctypes.c_void_p(win_id)
+            ns_view = objc.objc_object(c_void_p=ptr)
+            ns_window = ns_view.window()
+            ns_window.setLevel_(3)  # NSFloatingWindowLevel
+            ns_window.setHidesOnDeactivate_(False)
+            ns_window.orderFrontRegardless()
+        except Exception:
+            self.raise_()
 
     def _position_to_default_if_needed(self) -> None:
         """Move the pill to the default or saved position."""

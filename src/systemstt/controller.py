@@ -453,12 +453,11 @@ class AppController(QObject):
         except Exception as exc:
             logger.error("Failed to register hotkey: %s", exc)
 
-        # Restore pill position
-        if self._settings.pill_position_x is not None:
-            self._floating_pill.set_position(
-                self._settings.pill_position_x,
-                self._settings.pill_position_y or 48,
-            )
+        # Restore pill position (only if on-screen)
+        pill_x = self._settings.pill_position_x
+        pill_y = self._settings.pill_position_y
+        if pill_x is not None and pill_y is not None and pill_y >= 0:
+            self._floating_pill.set_position(pill_x, pill_y)
 
         # Show the menu bar icon
         self._menu_bar.show()
