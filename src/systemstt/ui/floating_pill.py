@@ -110,6 +110,8 @@ class FloatingPill(QWidget):
             | Qt.WindowType.Tool
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
+        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.setMinimumWidth(TOKENS.pill_min_width)
         self.setMaximumWidth(TOKENS.pill_max_width)
 
@@ -283,7 +285,6 @@ class FloatingPill(QWidget):
 
         self._position_to_default_if_needed()
         self.show()
-        self.raise_()
         logger.debug("Floating pill shown: language=%s, engine=%s", language, engine)
 
     def hide_pill(self) -> None:

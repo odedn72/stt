@@ -92,6 +92,20 @@ def _parse_language(lang_str: str) -> DetectedLanguage:
     return DetectedLanguage.UNKNOWN
 
 
+def _detect_language_from_text(text: str) -> DetectedLanguage:
+    """Detect language from text content using Unicode character ranges.
+
+    Hebrew characters fall in U+0590–U+05FF. If any are present, classify
+    as Hebrew; otherwise English. Reliable for Hebrew/English bilingual use.
+    """
+    if not text.strip():
+        return DetectedLanguage.UNKNOWN
+    for ch in text:
+        if "\u0590" <= ch <= "\u05ff":
+            return DetectedLanguage.HEBREW
+    return DetectedLanguage.ENGLISH
+
+
 class CloudAPIEngine(STTEngine):
     """Cloud STT engine using OpenAI Whisper API."""
 
@@ -272,6 +286,15 @@ class CloudAPIEngine(STTEngine):
         raise TranscriptionError("Transcription failed after all retries")
 
     _DEFAULT_PROMPT = "Transcribe in English or Hebrew (עברית)."
+    _DEFAULT_INSTRUCTIONS = (
+        "Transcribe the audio exactly as spoken. "
+        "The speaker may use English, Hebrew (עברית), or both."
+    )
+
+    @property
+    def _is_whisper_model(self) -> bool:
+        """Return True if using classic whisper-1 model (vs gpt-4o-transcribe)."""
+        return "whisper" in self._config.model.lower()
 
     async def _do_transcribe(
         self,
@@ -288,10 +311,18 @@ class CloudAPIEngine(STTEngine):
         }
         data: dict[str, str] = {
             "model": self._config.model,
-            "response_format": "verbose_json",
-            "prompt": context_prompt if context_prompt else self._DEFAULT_PROMPT,
-            "temperature": "0",
         }
+
+        if self._is_whisper_model:
+            # whisper-1 supports verbose_json, prompt, and temperature
+            data["response_format"] = "verbose_json"
+            data["prompt"] = context_prompt if context_prompt else self._DEFAULT_PROMPT
+            data["temperature"] = "0"
+        else:
+            # gpt-4o-transcribe only supports json/text, uses instructions
+            data["response_format"] = "json"
+            data["instructions"] = self._DEFAULT_INSTRUCTIONS
+
         if language_hint is not None and language_hint != DetectedLanguage.UNKNOWN:
             data["language"] = language_hint.value
 
@@ -305,6 +336,8 @@ class CloudAPIEngine(STTEngine):
             raise APITimeoutError(f"API request timed out: {exc}") from exc
         except httpx.HTTPStatusError as exc:
             status_code = exc.response.status_code
+            response_body = exc.response.text
+            logger.debug("API error response body: %s", response_body)
             if status_code == 401:
                 raise APIAuthenticationError(
                     f"API authentication failed (HTTP 401): {exc}"
@@ -313,7 +346,9 @@ class CloudAPIEngine(STTEngine):
                 raise APIRateLimitError(f"API rate limit exceeded (HTTP 429): {exc}") from exc
             if status_code >= 500:
                 raise APIUnavailableError(f"API unavailable (HTTP {status_code}): {exc}") from exc
-            raise CloudAPIError(f"API request failed (HTTP {status_code}): {exc}") from exc
+            raise CloudAPIError(
+                f"API request failed (HTTP {status_code}): {response_body}"
+            ) from exc
 
         return self._parse_response(response.json(), start_time)
 
@@ -325,6 +360,9 @@ class CloudAPIEngine(STTEngine):
         """Parse the API response into a TranscriptionResult."""
         full_text = str(response_data.get("text", ""))
         language = _parse_language(str(response_data.get("language", "unknown")))
+        # gpt-4o-transcribe json format doesn't return language — detect from text
+        if language == DetectedLanguage.UNKNOWN and full_text.strip():
+            language = _detect_language_from_text(full_text)
         processing_time_ms = (time.monotonic() - start_time) * 1000
 
         segments_data = response_data.get("segments", [])

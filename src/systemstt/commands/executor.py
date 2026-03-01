@@ -65,12 +65,12 @@ class CommandExecutor:
     async def _delete_last_sentence(self) -> None:
         """Delete the last sentence.
 
-        Strategy: Shift+Up to select, then Backspace to delete.
-        This is a simplification; a more robust approach would
-        use text analysis.
+        Uses Cmd+Z (undo) to reverse the last text injection, which
+        in practice removes the last dictated chunk — the closest
+        approximation to "delete last sentence" without clipboard
+        introspection.
         """
-        # Select from cursor to beginning of line, then delete
-        await self._injector.send_keystroke(SpecialKey.BACKSPACE, modifiers=[KeyModifier.COMMAND])
+        await self._injector.send_keystroke("z", modifiers=[KeyModifier.COMMAND])
 
     async def _undo(self) -> None:
         """Undo: Cmd+Z on macOS."""

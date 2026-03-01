@@ -67,8 +67,8 @@ logger = logging.getLogger(__name__)
 _CLOUD_BUFFER_SAMPLES = 16_000 * 3  # 3 seconds
 _LOCAL_BUFFER_SAMPLES = 16_000 * 5  # 5 seconds
 
-# RMS threshold below which audio is considered silent (~-40 dBFS)
-_SILENCE_RMS_THRESHOLD = 0.01
+# RMS threshold below which audio is considered silent (~-60 dBFS)
+_SILENCE_RMS_THRESHOLD = 0.001
 
 # Keychain key for the cloud API key
 _API_KEY_NAME = "api_key"
@@ -297,6 +297,7 @@ class AppController(QObject):
         self._elapsed_seconds: int = 0
         self._current_language: str = "EN"
         self._last_transcription_text: str | None = None
+        self._detected_language: DetectedLanguage | None = None
 
         # -- Async worker -----------------------------------------------------
         self._async_worker = AsyncWorker(self)
@@ -522,6 +523,7 @@ class AppController(QObject):
         self._pending_transcriptions = 0
         self._elapsed_seconds = 0
         self._last_transcription_text = None
+        self._detected_language = None
 
         # Convert config EngineType → STT EngineType
         stt_engine_type = STTEngineType(self._settings.engine.value)
@@ -690,10 +692,13 @@ class AppController(QObject):
         self._audio_buffer.clear()
         self._buffered_samples = 0
 
+        rms = float(np.sqrt(np.mean(audio**2)))
+        logger.info("Dispatch: %.2fs audio, RMS=%.6f", len(audio) / 16_000, rms)
+
         # Skip silent chunks for cloud API (saves API calls + avoids hallucinations).
         # Local Whisper has built-in VAD, so it handles silence internally.
         if self._settings.engine == ConfigEngineType.CLOUD_API and self._is_silent(audio):
-            logger.debug("Skipping silent audio chunk for cloud API")
+            logger.info("Skipping silent chunk (RMS=%.6f < %.4f)", rms, _SILENCE_RMS_THRESHOLD)
             return
 
         engine = self._engine_manager.active_engine
@@ -702,9 +707,11 @@ class AppController(QObject):
             return
 
         self._pending_transcriptions += 1
+        logger.info("Dispatching transcription to %s engine", self._settings.engine.value)
         self._async_worker.schedule_transcribe(
             engine,
             audio,
+            language_hint=self._detected_language,
             context_prompt=self._last_transcription_text,
         )
 
@@ -725,10 +732,18 @@ class AppController(QObject):
             self._maybe_finish_stop()
             return
 
-        # Track context for next transcription chunk
-        self._last_transcription_text = text
+        # Add space between consecutive chunks so words don't run together.
+        # Skip if this is the first chunk or text starts with whitespace.
+        is_continuation = self._last_transcription_text is not None
+        if is_continuation and text[0:1] not in ("", " ", "\n"):
+            text = " " + text
 
-        # Update detected language
+        # Track context for next transcription chunk
+        self._last_transcription_text = text.strip()
+
+        # Update detected language (used as hint for subsequent chunks)
+        if result.primary_language in (DetectedLanguage.HEBREW, DetectedLanguage.ENGLISH):
+            self._detected_language = result.primary_language
         if result.primary_language == DetectedLanguage.HEBREW:
             self._current_language = "HE"
         elif result.primary_language == DetectedLanguage.ENGLISH:

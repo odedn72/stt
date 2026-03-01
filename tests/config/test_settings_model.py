@@ -67,9 +67,9 @@ class TestSettingsModelDefaults:
         settings = SettingsModel()
         assert settings.cloud_api_base_url == "https://api.openai.com/v1"
 
-    def test_default_cloud_api_model_is_whisper1(self) -> None:
+    def test_default_cloud_api_model_is_gpt4o_transcribe(self) -> None:
         settings = SettingsModel()
-        assert settings.cloud_api_model == "whisper-1"
+        assert settings.cloud_api_model == "gpt-4o-transcribe"
 
     def test_default_local_model_size_is_medium(self) -> None:
         settings = SettingsModel()

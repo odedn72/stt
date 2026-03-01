@@ -102,7 +102,7 @@ def default_settings_dict() -> dict[str, Any]:
         "engine": "cloud_api",
         "cloud_api_provider": "openai",
         "cloud_api_base_url": "https://api.openai.com/v1",
-        "cloud_api_model": "whisper-1",
+        "cloud_api_model": "gpt-4o-transcribe",
         "local_model_size": "medium",
         "local_compute_type": "int8",
         "audio_device_id": None,

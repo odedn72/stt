@@ -63,7 +63,7 @@ class SettingsModel(BaseModel):
     # Cloud API settings
     cloud_api_provider: str = "openai"
     cloud_api_base_url: str = "https://api.openai.com/v1"
-    cloud_api_model: str = "whisper-1"
+    cloud_api_model: str = "gpt-4o-transcribe"
 
     # Local engine settings
     local_model_size: WhisperModelSize = WhisperModelSize.MEDIUM
