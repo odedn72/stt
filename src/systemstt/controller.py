@@ -64,11 +64,14 @@ from systemstt.ui.menu_bar import MenuBarWidget
 logger = logging.getLogger(__name__)
 
 # Audio buffer thresholds (samples at 16 kHz)
-_CLOUD_BUFFER_SAMPLES = 16_000 * 3  # 3 seconds
+_CLOUD_BUFFER_SAMPLES = 16_000 * 5  # 5 seconds
 _LOCAL_BUFFER_SAMPLES = 16_000 * 5  # 5 seconds
 
-# RMS threshold below which audio is considered silent (~-60 dBFS)
-_SILENCE_RMS_THRESHOLD = 0.001
+# Speech detection: frame-level energy analysis
+_FRAME_DURATION_MS = 20  # 20ms frames for energy analysis
+_FRAME_ENERGY_THRESHOLD = 0.02  # Per-frame RMS above which a frame is "speech"
+_MIN_SPEECH_FRACTION = 0.10  # At least 10% of frames must have speech
+_SILENCE_RMS_FLOOR = 0.003  # Fast-path: below this, definitely silent
 
 # Keychain key for the cloud API key
 _API_KEY_NAME = "api_key"
@@ -665,12 +668,35 @@ class AppController(QObject):
             self._dispatch_transcription()
 
     @staticmethod
-    def _is_silent(audio: np.ndarray) -> bool:  # type: ignore[type-arg]
-        """Return True if the audio chunk is below the silence threshold."""
+    def _has_speech(
+        audio: np.ndarray,  # type: ignore[type-arg]
+        sample_rate: int = 16_000,
+    ) -> bool:
+        """Detect speech using frame-level energy analysis.
+
+        Splits audio into 20ms frames and counts how many exceed a
+        per-frame energy threshold.  Real speech has clear energy
+        bursts in many frames; background noise is uniformly low.
+        """
         if len(audio) == 0:
-            return True
+            return False
+
+        # Fast path: obviously silent
         rms = float(np.sqrt(np.mean(audio**2)))
-        return rms < _SILENCE_RMS_THRESHOLD
+        if rms < _SILENCE_RMS_FLOOR:
+            return False
+
+        # Frame-level analysis (vectorised via numpy reshape)
+        frame_samples = sample_rate * _FRAME_DURATION_MS // 1000  # 320
+        n_frames = len(audio) // frame_samples
+        if n_frames == 0:
+            return rms > _FRAME_ENERGY_THRESHOLD
+
+        trimmed = audio[: n_frames * frame_samples]
+        frames = trimmed.reshape(n_frames, frame_samples)
+        frame_rms = np.sqrt(np.mean(frames**2, axis=1))
+        speech_ratio = float(np.mean(frame_rms > _FRAME_ENERGY_THRESHOLD))
+        return speech_ratio >= _MIN_SPEECH_FRACTION
 
     def _dispatch_transcription(self) -> None:
         """Concatenate buffered audio and dispatch for transcription."""
@@ -694,10 +720,10 @@ class AppController(QObject):
         rms = float(np.sqrt(np.mean(audio**2)))
         logger.info("Dispatch: %.2fs audio, RMS=%.6f", len(audio) / 16_000, rms)
 
-        # Skip silent chunks for cloud API (saves API calls + avoids hallucinations).
-        # Local Whisper has built-in VAD, so it handles silence internally.
-        if self._settings.engine == ConfigEngineType.CLOUD_API and self._is_silent(audio):
-            logger.info("Skipping silent chunk (RMS=%.6f < %.4f)", rms, _SILENCE_RMS_THRESHOLD)
+        # Skip chunks without speech for cloud API (saves API calls + avoids
+        # hallucinations).  Local Whisper has built-in VAD.
+        if self._settings.engine == ConfigEngineType.CLOUD_API and not self._has_speech(audio):
+            logger.info("No speech detected (RMS=%.6f), skipping", rms)
             return
 
         engine = self._engine_manager.active_engine
@@ -726,8 +752,15 @@ class AppController(QObject):
             self._maybe_finish_stop()
             return
 
+        logger.info(
+            "Transcription result: lang=%s, text='%s'",
+            result.primary_language.value,
+            result.full_text[:100],
+        )
+
         text = filter_hallucinations(result.full_text)
         if not text:
+            logger.info("Filtered as hallucination, skipping")
             self._maybe_finish_stop()
             return
 

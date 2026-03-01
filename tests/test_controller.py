@@ -1361,15 +1361,29 @@ class TestSilenceDetection:
         # Local Whisper should still get the audio (VAD handles it internally)
         controller._async_worker.schedule_transcribe.assert_called_once()
 
-    def test_is_silent_static_method(self) -> None:
-        """Test the _is_silent static method directly."""
-        assert AppController._is_silent(np.zeros(1000, dtype=np.float32)) is True
+    def test_has_speech_static_method(self) -> None:
+        """Test the _has_speech frame-level speech detector."""
+        # Silence → no speech
+        assert AppController._has_speech(np.zeros(16_000, dtype=np.float32)) is False
 
-        loud = np.full(1000, 0.5, dtype=np.float32)
-        assert AppController._is_silent(loud) is False
+        # Loud sustained tone → speech detected (all frames above threshold)
+        loud = np.full(16_000, 0.5, dtype=np.float32)
+        assert AppController._has_speech(loud) is True
 
+        # Empty → no speech
         empty = np.array([], dtype=np.float32)
-        assert AppController._is_silent(empty) is True
+        assert AppController._has_speech(empty) is False
+
+        # Low ambient noise (RMS ~0.009) → no speech
+        rng = np.random.default_rng(42)
+        noise = (rng.standard_normal(16_000) * 0.009).astype(np.float32)
+        assert AppController._has_speech(noise) is False
+
+        # Speech burst in otherwise silent audio → speech detected
+        mostly_silent = np.zeros(16_000, dtype=np.float32)
+        # 20% of frames with speech-level energy
+        mostly_silent[0:3200] = 0.1
+        assert AppController._has_speech(mostly_silent) is True
 
 
 class TestAutoRecovery:

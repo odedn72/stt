@@ -288,13 +288,32 @@ class CloudAPIEngine(STTEngine):
     _DEFAULT_PROMPT = "Transcribe in English or Hebrew (עברית)."
     _DEFAULT_INSTRUCTIONS = (
         "Transcribe the audio exactly as spoken. "
-        "The speaker may use English, Hebrew (עברית), or both."
+        "The speaker may use English, Hebrew (עברית), or both. "
+        "Preserve the original language — do not translate."
     )
 
     @property
     def _is_whisper_model(self) -> bool:
         """Return True if using classic whisper-1 model (vs gpt-4o-transcribe)."""
         return "whisper" in self._config.model.lower()
+
+    def _build_instructions(
+        self,
+        language_hint: DetectedLanguage | None,
+        context_prompt: str | None,
+    ) -> str:
+        """Build instructions for gpt-4o-transcribe with language and context."""
+        parts = [self._DEFAULT_INSTRUCTIONS]
+
+        if language_hint == DetectedLanguage.HEBREW:
+            parts.append("The speaker is currently speaking Hebrew (עברית).")
+        elif language_hint == DetectedLanguage.ENGLISH:
+            parts.append("The speaker is currently speaking English.")
+
+        if context_prompt:
+            parts.append(f'Previous speech: "{context_prompt}"')
+
+        return " ".join(parts)
 
     async def _do_transcribe(
         self,
@@ -319,9 +338,12 @@ class CloudAPIEngine(STTEngine):
             data["prompt"] = context_prompt if context_prompt else self._DEFAULT_PROMPT
             data["temperature"] = "0"
         else:
-            # gpt-4o-transcribe only supports json/text, uses instructions
+            # gpt-4o-transcribe uses instructions (not prompt/temperature)
             data["response_format"] = "json"
-            data["instructions"] = self._DEFAULT_INSTRUCTIONS
+            data["instructions"] = self._build_instructions(
+                language_hint,
+                context_prompt,
+            )
 
         if language_hint is not None and language_hint != DetectedLanguage.UNKNOWN:
             data["language"] = language_hint.value
