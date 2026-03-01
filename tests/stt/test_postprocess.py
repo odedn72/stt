@@ -7,10 +7,7 @@ transcription text passes through unchanged.
 
 from __future__ import annotations
 
-import pytest
-
 from systemstt.stt.postprocess import filter_hallucinations
-
 
 # ---------------------------------------------------------------------------
 # Normal text — should pass through unchanged
@@ -21,7 +18,8 @@ class TestNormalTextPassthrough:
     """Normal transcription text should not be filtered."""
 
     def test_english_sentence(self) -> None:
-        assert filter_hallucinations("Hello, how are you doing today?") == "Hello, how are you doing today?"
+        text = "Hello, how are you doing today?"
+        assert filter_hallucinations(text) == text
 
     def test_hebrew_sentence(self) -> None:
         text = "שלום, מה שלומך היום?"
