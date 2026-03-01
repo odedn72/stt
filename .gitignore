@@ -43,3 +43,6 @@ coverage.xml
 # Environment
 .env
 .env.local
+
+# Claude Code
+.claude/settings.local.json
