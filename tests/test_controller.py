@@ -1707,6 +1707,110 @@ class TestSilenceDetection:
         assert AppController._has_speech(mostly_silent) is True
 
 
+class TestDilutedSpeechFix:
+    """Tests for leading-silence trim and speech_confirmed flag."""
+
+    @patch("systemstt.controller.MenuBarWidget")
+    @patch("systemstt.controller.FloatingPill")
+    @patch("systemstt.controller.AudioRecorder")
+    @patch("systemstt.controller.EngineManager")
+    def test_leading_silence_trimmed(
+        self,
+        _mock_em: MagicMock,
+        _mock_rec: MagicMock,
+        _mock_pill: MagicMock,
+        _mock_menu: MagicMock,
+        mock_deps: dict[str, Any],
+    ) -> None:
+        """Leading silent chunks are trimmed — only speech portion dispatched."""
+        controller = AppController(**mock_deps)
+        controller._async_worker = MagicMock()
+        controller._async_worker.schedule_activate_engine = MagicMock()
+        mock_engine = MagicMock()
+        controller._engine_manager.active_engine = mock_engine
+
+        controller._on_dictation_toggle()
+        controller._on_engine_ready()
+
+        # 3 silent + 2 speech + trailing silence → dispatch
+        for _ in range(3):
+            controller._on_audio_chunk(_make_silent_chunk())
+        controller._on_audio_chunk(_make_audio_chunk())
+        controller._on_audio_chunk(_make_audio_chunk())
+        for _ in range(_SILENCE_CHUNKS_FOR_DISPATCH):
+            controller._on_audio_chunk(_make_silent_chunk())
+
+        # Audio should only contain the 2 speech chunks (leading + trailing trimmed)
+        call_args = controller._async_worker.schedule_transcribe.call_args
+        audio_arg = call_args[0][1]
+        assert len(audio_arg) == 2 * _CHUNK_SAMPLES
+
+    @patch("systemstt.controller.MenuBarWidget")
+    @patch("systemstt.controller.FloatingPill")
+    @patch("systemstt.controller.AudioRecorder")
+    @patch("systemstt.controller.EngineManager")
+    def test_diluted_speech_not_dropped(
+        self,
+        _mock_em: MagicMock,
+        _mock_rec: MagicMock,
+        _mock_pill: MagicMock,
+        _mock_menu: MagicMock,
+        mock_deps: dict[str, Any],
+    ) -> None:
+        """Speech-boundary dispatch with diluted buffer is not dropped."""
+        controller = AppController(**mock_deps)
+        controller._async_worker = MagicMock()
+        controller._async_worker.schedule_activate_engine = MagicMock()
+        mock_engine = MagicMock()
+        controller._engine_manager.active_engine = mock_engine
+
+        controller._on_dictation_toggle()
+        controller._on_engine_ready()
+
+        # Lots of leading silence + speech + trailing silence
+        # Without the fix, the whole-buffer _has_speech would reject this
+        for _ in range(8):
+            controller._on_audio_chunk(_make_silent_chunk())
+        controller._on_audio_chunk(_make_audio_chunk())
+        controller._on_audio_chunk(_make_audio_chunk())
+        for _ in range(_SILENCE_CHUNKS_FOR_DISPATCH):
+            controller._on_audio_chunk(_make_silent_chunk())
+
+        # speech_confirmed=True bypasses _has_speech → dispatch succeeds
+        controller._async_worker.schedule_transcribe.assert_called_once()
+
+    @patch("systemstt.controller.MenuBarWidget")
+    @patch("systemstt.controller.FloatingPill")
+    @patch("systemstt.controller.AudioRecorder")
+    @patch("systemstt.controller.EngineManager")
+    def test_stop_flush_silent_still_filtered(
+        self,
+        _mock_em: MagicMock,
+        _mock_rec: MagicMock,
+        _mock_pill: MagicMock,
+        _mock_menu: MagicMock,
+        mock_deps: dict[str, Any],
+    ) -> None:
+        """Stop-flush with no speech_seen still filters via _has_speech."""
+        controller = AppController(**mock_deps)
+        controller._async_worker = MagicMock()
+        controller._async_worker.schedule_activate_engine = MagicMock()
+        mock_engine = MagicMock()
+        controller._engine_manager.active_engine = mock_engine
+
+        controller._on_dictation_toggle()
+        controller._on_engine_ready()
+
+        # Buffer only silent audio (speech_seen stays False)
+        for _ in range(3):
+            controller._on_audio_chunk(_make_silent_chunk())
+
+        # Stop dictation — speech_confirmed=False so _has_speech still filters
+        controller._on_dictation_toggle()
+
+        controller._async_worker.schedule_transcribe.assert_not_called()
+
+
 class TestAutoRecovery:
     """Tests for auto-recovery from error state."""
 

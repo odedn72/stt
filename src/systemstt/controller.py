@@ -559,7 +559,7 @@ class AppController(QObject):
 
         # Flush remaining audio buffer
         if self._audio_buffer:
-            self._dispatch_transcription()
+            self._dispatch_transcription(speech_confirmed=self._speech_seen)
 
         # If no pending transcriptions, finish immediately
         if self._pending_transcriptions == 0:
@@ -674,7 +674,7 @@ class AppController(QObject):
             and self._trailing_silent_chunks >= _SILENCE_CHUNKS_FOR_DISPATCH
             and self._buffered_samples >= _MIN_DISPATCH_SAMPLES
         ) or self._buffered_samples >= _MAX_BUFFER_SAMPLES:
-            self._dispatch_transcription()
+            self._dispatch_transcription(speech_confirmed=self._speech_seen)
 
     @staticmethod
     def _has_speech(
@@ -707,7 +707,7 @@ class AppController(QObject):
         speech_ratio = float(np.mean(frame_rms > _FRAME_ENERGY_THRESHOLD))
         return speech_ratio >= _MIN_SPEECH_FRACTION
 
-    def _dispatch_transcription(self) -> None:
+    def _dispatch_transcription(self, *, speech_confirmed: bool = False) -> None:
         """Concatenate buffered audio and dispatch for transcription."""
         if not self._audio_buffer:
             return
@@ -721,6 +721,15 @@ class AppController(QObject):
             and self._pending_transcriptions > 0
         ):
             return
+
+        # Trim leading silent chunks (silence before speech started)
+        leading_silent = 0
+        for chunk in self._audio_buffer:
+            if self._has_speech(chunk):
+                break
+            leading_silent += 1
+        if leading_silent > 0 and leading_silent < len(self._audio_buffer):
+            self._audio_buffer = self._audio_buffer[leading_silent:]
 
         # Trim trailing silent chunks to avoid hallucinations
         if (
@@ -740,7 +749,13 @@ class AppController(QObject):
 
         # Skip chunks without speech for cloud API (saves API calls + avoids
         # hallucinations).  Local Whisper has built-in VAD.
-        if self._settings.engine == ConfigEngineType.CLOUD_API and not self._has_speech(audio):
+        # When speech_confirmed=True, per-chunk detection already found speech
+        # so skip the whole-buffer check (which can reject diluted buffers).
+        if (
+            not speech_confirmed
+            and self._settings.engine == ConfigEngineType.CLOUD_API
+            and not self._has_speech(audio)
+        ):
             logger.info("No speech detected (RMS=%.6f), skipping", rms)
             return
 
