@@ -24,8 +24,8 @@ from systemstt.app import DictationState
 from systemstt.config.models import EngineType as ConfigEngineType
 from systemstt.config.models import SettingsModel
 from systemstt.controller import (
-    _CLOUD_BUFFER_SAMPLES,
-    _LOCAL_BUFFER_SAMPLES,
+    _MAX_BUFFER_SAMPLES,
+    _SILENCE_CHUNKS_FOR_DISPATCH,
     AppController,
     AsyncWorker,
     AudioBridge,
@@ -58,10 +58,30 @@ def qapp() -> QApplication:
 # ---------------------------------------------------------------------------
 
 
-def _make_audio_chunk(num_samples: int) -> np.ndarray:
+_CHUNK_SAMPLES = 8000  # 500ms at 16 kHz — matches PortAudio chunk size
+
+
+def _make_audio_chunk(num_samples: int = _CHUNK_SAMPLES) -> np.ndarray:
     """Create a non-silent audio chunk (sine wave) for tests."""
     t = np.linspace(0, num_samples / 16000, num_samples, endpoint=False, dtype=np.float32)
     return (0.5 * np.sin(2 * np.pi * 440 * t)).astype(np.float32)
+
+
+def _make_silent_chunk(num_samples: int = _CHUNK_SAMPLES) -> np.ndarray:
+    """Create a silent audio chunk for tests."""
+    return np.zeros(num_samples, dtype=np.float32)
+
+
+def _trigger_dispatch(controller: AppController) -> None:
+    """Send speech + silence pattern to trigger speech-boundary dispatch.
+
+    Sends 2 speech chunks (16000 samples >= _MIN_DISPATCH_SAMPLES) followed
+    by 2 silent chunks (_SILENCE_CHUNKS_FOR_DISPATCH) to trigger a dispatch.
+    """
+    controller._on_audio_chunk(_make_audio_chunk())
+    controller._on_audio_chunk(_make_audio_chunk())
+    controller._on_audio_chunk(_make_silent_chunk())
+    controller._on_audio_chunk(_make_silent_chunk())
 
 
 def _make_transcription_result(
@@ -601,7 +621,7 @@ class TestAudioBuffering:
     @patch("systemstt.controller.FloatingPill")
     @patch("systemstt.controller.AudioRecorder")
     @patch("systemstt.controller.EngineManager")
-    def test_threshold_dispatches_transcription(
+    def test_speech_boundary_dispatches_transcription(
         self,
         mock_em_cls: MagicMock,
         _mock_rec: MagicMock,
@@ -621,9 +641,8 @@ class TestAudioBuffering:
         controller._on_dictation_toggle()
         controller._on_engine_ready()
 
-        # Send enough data to cross the 3s threshold (cloud default)
-        chunk = _make_audio_chunk(_CLOUD_BUFFER_SAMPLES + 1000)
-        controller._on_audio_chunk(chunk)
+        # Send speech + silence pattern to trigger dispatch
+        _trigger_dispatch(controller)
 
         controller._async_worker.schedule_transcribe.assert_called_once()
         assert controller._buffered_samples == 0
@@ -648,6 +667,316 @@ class TestAudioBuffering:
         controller._on_audio_chunk(chunk)
 
         assert controller._buffered_samples == 0
+
+
+class TestSpeechBoundaryDispatch:
+    """Tests for speech-boundary audio chunking dispatch logic.
+
+    Instead of fixed buffer thresholds, audio is dispatched when speech
+    is followed by a silence gap (2 consecutive silent chunks = 1s).
+    """
+
+    @patch("systemstt.controller.MenuBarWidget")
+    @patch("systemstt.controller.FloatingPill")
+    @patch("systemstt.controller.AudioRecorder")
+    @patch("systemstt.controller.EngineManager")
+    def test_speech_then_silence_dispatches(
+        self,
+        _mock_em: MagicMock,
+        _mock_rec: MagicMock,
+        _mock_pill: MagicMock,
+        _mock_menu: MagicMock,
+        mock_deps: dict[str, Any],
+    ) -> None:
+        """Speech chunks followed by 2 silent chunks triggers dispatch."""
+        controller = AppController(**mock_deps)
+        controller._async_worker = MagicMock()
+        controller._async_worker.schedule_activate_engine = MagicMock()
+        mock_engine = MagicMock()
+        controller._engine_manager.active_engine = mock_engine
+
+        controller._on_dictation_toggle()
+        controller._on_engine_ready()
+
+        # 2 speech chunks + 2 silent chunks
+        _trigger_dispatch(controller)
+
+        controller._async_worker.schedule_transcribe.assert_called_once()
+        assert controller._pending_transcriptions == 1
+
+    @patch("systemstt.controller.MenuBarWidget")
+    @patch("systemstt.controller.FloatingPill")
+    @patch("systemstt.controller.AudioRecorder")
+    @patch("systemstt.controller.EngineManager")
+    def test_continuous_speech_buffered(
+        self,
+        _mock_em: MagicMock,
+        _mock_rec: MagicMock,
+        _mock_pill: MagicMock,
+        _mock_menu: MagicMock,
+        mock_deps: dict[str, Any],
+    ) -> None:
+        """Continuous speech without silence gap does not dispatch."""
+        controller = AppController(**mock_deps)
+        controller._async_worker = MagicMock()
+        controller._async_worker.schedule_activate_engine = MagicMock()
+
+        controller._on_dictation_toggle()
+        controller._on_engine_ready()
+
+        # Send 4 speech chunks — no silence, no dispatch
+        for _ in range(4):
+            controller._on_audio_chunk(_make_audio_chunk())
+
+        controller._async_worker.schedule_transcribe.assert_not_called()
+        assert controller._speech_seen is True
+        assert controller._trailing_silent_chunks == 0
+        assert controller._buffered_samples == 4 * _CHUNK_SAMPLES
+
+    @patch("systemstt.controller.MenuBarWidget")
+    @patch("systemstt.controller.FloatingPill")
+    @patch("systemstt.controller.AudioRecorder")
+    @patch("systemstt.controller.EngineManager")
+    def test_silence_only_ignored(
+        self,
+        _mock_em: MagicMock,
+        _mock_rec: MagicMock,
+        _mock_pill: MagicMock,
+        _mock_menu: MagicMock,
+        mock_deps: dict[str, Any],
+    ) -> None:
+        """Silence before any speech does not trigger dispatch."""
+        controller = AppController(**mock_deps)
+        controller._async_worker = MagicMock()
+        controller._async_worker.schedule_activate_engine = MagicMock()
+
+        controller._on_dictation_toggle()
+        controller._on_engine_ready()
+
+        # Only silent chunks — speech_seen stays False
+        for _ in range(10):
+            controller._on_audio_chunk(_make_silent_chunk())
+
+        controller._async_worker.schedule_transcribe.assert_not_called()
+        assert controller._speech_seen is False
+        assert controller._trailing_silent_chunks == 0
+
+    @patch("systemstt.controller.MenuBarWidget")
+    @patch("systemstt.controller.FloatingPill")
+    @patch("systemstt.controller.AudioRecorder")
+    @patch("systemstt.controller.EngineManager")
+    def test_max_cap_forces_dispatch(
+        self,
+        _mock_em: MagicMock,
+        _mock_rec: MagicMock,
+        _mock_pill: MagicMock,
+        _mock_menu: MagicMock,
+        mock_deps: dict[str, Any],
+    ) -> None:
+        """Continuous speech at max cap (20s) forces dispatch."""
+        controller = AppController(**mock_deps)
+        controller._async_worker = MagicMock()
+        controller._async_worker.schedule_activate_engine = MagicMock()
+        mock_engine = MagicMock()
+        controller._engine_manager.active_engine = mock_engine
+
+        controller._on_dictation_toggle()
+        controller._on_engine_ready()
+
+        # Send enough speech chunks to reach max cap
+        n_chunks = _MAX_BUFFER_SAMPLES // _CHUNK_SAMPLES  # 40 chunks = 20s
+        for _ in range(n_chunks):
+            controller._on_audio_chunk(_make_audio_chunk())
+
+        controller._async_worker.schedule_transcribe.assert_called_once()
+
+    @patch("systemstt.controller.MenuBarWidget")
+    @patch("systemstt.controller.FloatingPill")
+    @patch("systemstt.controller.AudioRecorder")
+    @patch("systemstt.controller.EngineManager")
+    def test_trailing_silence_trimmed(
+        self,
+        _mock_em: MagicMock,
+        _mock_rec: MagicMock,
+        _mock_pill: MagicMock,
+        _mock_menu: MagicMock,
+        mock_deps: dict[str, Any],
+    ) -> None:
+        """Trailing silent chunks are trimmed before dispatch."""
+        controller = AppController(**mock_deps)
+        controller._async_worker = MagicMock()
+        controller._async_worker.schedule_activate_engine = MagicMock()
+        mock_engine = MagicMock()
+        controller._engine_manager.active_engine = mock_engine
+
+        controller._on_dictation_toggle()
+        controller._on_engine_ready()
+
+        # 2 speech + 2 silent → dispatch with trailing silence trimmed
+        _trigger_dispatch(controller)
+
+        # Audio passed to transcribe should only contain the 2 speech chunks
+        call_args = controller._async_worker.schedule_transcribe.call_args
+        audio_arg = call_args[0][1]
+        assert len(audio_arg) == 2 * _CHUNK_SAMPLES  # 16000, not 32000
+
+    @patch("systemstt.controller.MenuBarWidget")
+    @patch("systemstt.controller.FloatingPill")
+    @patch("systemstt.controller.AudioRecorder")
+    @patch("systemstt.controller.EngineManager")
+    def test_state_reset_after_dispatch(
+        self,
+        _mock_em: MagicMock,
+        _mock_rec: MagicMock,
+        _mock_pill: MagicMock,
+        _mock_menu: MagicMock,
+        mock_deps: dict[str, Any],
+    ) -> None:
+        """Speech tracking state resets after dispatch."""
+        controller = AppController(**mock_deps)
+        controller._async_worker = MagicMock()
+        controller._async_worker.schedule_activate_engine = MagicMock()
+        mock_engine = MagicMock()
+        controller._engine_manager.active_engine = mock_engine
+
+        controller._on_dictation_toggle()
+        controller._on_engine_ready()
+
+        _trigger_dispatch(controller)
+
+        assert controller._speech_seen is False
+        assert controller._trailing_silent_chunks == 0
+        assert controller._buffered_samples == 0
+        assert len(controller._audio_buffer) == 0
+
+    @patch("systemstt.controller.MenuBarWidget")
+    @patch("systemstt.controller.FloatingPill")
+    @patch("systemstt.controller.AudioRecorder")
+    @patch("systemstt.controller.EngineManager")
+    def test_stop_flushes_buffer(
+        self,
+        _mock_em: MagicMock,
+        _mock_rec: MagicMock,
+        _mock_pill: MagicMock,
+        _mock_menu: MagicMock,
+        mock_deps: dict[str, Any],
+    ) -> None:
+        """Stopping dictation flushes the buffer regardless of silence gap."""
+        controller = AppController(**mock_deps)
+        controller._async_worker = MagicMock()
+        controller._async_worker.schedule_activate_engine = MagicMock()
+        mock_engine = MagicMock()
+        controller._engine_manager.active_engine = mock_engine
+
+        controller._on_dictation_toggle()
+        controller._on_engine_ready()
+
+        # Send speech chunks without silence gap
+        for _ in range(3):
+            controller._on_audio_chunk(_make_audio_chunk())
+
+        assert controller._async_worker.schedule_transcribe.call_count == 0
+
+        # Stop dictation — flushes buffer
+        controller._on_dictation_toggle()
+
+        controller._async_worker.schedule_transcribe.assert_called_once()
+
+    @patch("systemstt.controller.MenuBarWidget")
+    @patch("systemstt.controller.FloatingPill")
+    @patch("systemstt.controller.AudioRecorder")
+    @patch("systemstt.controller.EngineManager")
+    def test_two_separate_utterances(
+        self,
+        _mock_em: MagicMock,
+        _mock_rec: MagicMock,
+        _mock_pill: MagicMock,
+        _mock_menu: MagicMock,
+        mock_deps: dict[str, Any],
+    ) -> None:
+        """Two utterances separated by silence dispatch independently."""
+        controller = AppController(**mock_deps)
+        controller._async_worker = MagicMock()
+        controller._async_worker.schedule_activate_engine = MagicMock()
+        mock_engine = MagicMock()
+        controller._engine_manager.active_engine = mock_engine
+
+        controller._on_dictation_toggle()
+        controller._on_engine_ready()
+
+        # First utterance: speech + silence → dispatch
+        _trigger_dispatch(controller)
+        assert controller._async_worker.schedule_transcribe.call_count == 1
+
+        # Deliver result so pending_transcriptions resets
+        result = _make_transcription_result("First utterance")
+        controller._on_transcription_result(result)
+
+        # Second utterance: speech + silence → dispatch
+        _trigger_dispatch(controller)
+        assert controller._async_worker.schedule_transcribe.call_count == 2
+
+    @patch("systemstt.controller.MenuBarWidget")
+    @patch("systemstt.controller.FloatingPill")
+    @patch("systemstt.controller.AudioRecorder")
+    @patch("systemstt.controller.EngineManager")
+    def test_min_buffer_respected(
+        self,
+        _mock_em: MagicMock,
+        _mock_rec: MagicMock,
+        _mock_pill: MagicMock,
+        _mock_menu: MagicMock,
+        mock_deps: dict[str, Any],
+    ) -> None:
+        """Dispatch waits for minimum buffer size even when silence threshold met."""
+        controller = AppController(**mock_deps)
+        controller._async_worker = MagicMock()
+        controller._async_worker.schedule_activate_engine = MagicMock()
+
+        controller._on_dictation_toggle()
+        controller._on_engine_ready()
+
+        # Use small chunks so total (speech + 2*silence) < _MIN_DISPATCH_SAMPLES
+        small_speech = _make_audio_chunk(2000)
+        small_silent = _make_silent_chunk(2000)
+
+        # 2000 speech + 2×2000 silence = 6000 < 16000 min
+        controller._on_audio_chunk(small_speech)
+        controller._on_audio_chunk(small_silent)
+        controller._on_audio_chunk(small_silent)
+
+        # Silence threshold met but buffer too small — no dispatch
+        controller._async_worker.schedule_transcribe.assert_not_called()
+        assert controller._speech_seen is True
+        assert controller._trailing_silent_chunks == _SILENCE_CHUNKS_FOR_DISPATCH
+
+    @patch("systemstt.controller.MenuBarWidget")
+    @patch("systemstt.controller.FloatingPill")
+    @patch("systemstt.controller.AudioRecorder")
+    @patch("systemstt.controller.EngineManager")
+    def test_single_silent_chunk_does_not_dispatch(
+        self,
+        _mock_em: MagicMock,
+        _mock_rec: MagicMock,
+        _mock_pill: MagicMock,
+        _mock_menu: MagicMock,
+        mock_deps: dict[str, Any],
+    ) -> None:
+        """A single silent chunk after speech is not enough to dispatch."""
+        controller = AppController(**mock_deps)
+        controller._async_worker = MagicMock()
+        controller._async_worker.schedule_activate_engine = MagicMock()
+
+        controller._on_dictation_toggle()
+        controller._on_engine_ready()
+
+        # 2 speech chunks + 1 silent chunk (< _SILENCE_CHUNKS_FOR_DISPATCH)
+        controller._on_audio_chunk(_make_audio_chunk())
+        controller._on_audio_chunk(_make_audio_chunk())
+        controller._on_audio_chunk(_make_silent_chunk())
+
+        controller._async_worker.schedule_transcribe.assert_not_called()
+        assert controller._trailing_silent_chunks == 1
 
 
 class TestTranscriptionResultHandling:
@@ -1026,46 +1355,6 @@ class TestQuitAndShutdown:
             mock_app.exit.assert_called_once_with(0)
 
 
-class TestBufferThreshold:
-    """Tests for buffer threshold based on engine type."""
-
-    @patch("systemstt.controller.MenuBarWidget")
-    @patch("systemstt.controller.FloatingPill")
-    @patch("systemstt.controller.AudioRecorder")
-    @patch("systemstt.controller.EngineManager")
-    def test_cloud_threshold(
-        self,
-        _mock_em: MagicMock,
-        _mock_rec: MagicMock,
-        _mock_pill: MagicMock,
-        _mock_menu: MagicMock,
-        mock_deps: dict[str, Any],
-    ) -> None:
-        """Cloud engine uses 3s buffer threshold."""
-        controller = AppController(**mock_deps)
-        assert controller._settings.engine == ConfigEngineType.CLOUD_API
-        assert controller._buffer_threshold == _CLOUD_BUFFER_SAMPLES
-
-    @patch("systemstt.controller.MenuBarWidget")
-    @patch("systemstt.controller.FloatingPill")
-    @patch("systemstt.controller.AudioRecorder")
-    @patch("systemstt.controller.EngineManager")
-    def test_local_threshold(
-        self,
-        _mock_em: MagicMock,
-        _mock_rec: MagicMock,
-        _mock_pill: MagicMock,
-        _mock_menu: MagicMock,
-        mock_deps: dict[str, Any],
-    ) -> None:
-        """Local engine uses 5s buffer threshold."""
-        mock_deps["settings_store"].load.return_value = SettingsModel(
-            engine=ConfigEngineType.LOCAL_WHISPER,
-        )
-        controller = AppController(**mock_deps)
-        assert controller._buffer_threshold == _LOCAL_BUFFER_SAMPLES
-
-
 class TestHallucinationFiltering:
     """Tests for hallucination filtering in transcription result handling."""
 
@@ -1178,9 +1467,8 @@ class TestContextPromptTracking:
         controller._on_dictation_toggle()
         controller._on_engine_ready()
 
-        # Send enough non-silent data to cross threshold
-        chunk = _make_audio_chunk(_CLOUD_BUFFER_SAMPLES + 1000)
-        controller._on_audio_chunk(chunk)
+        # Speech + silence pattern triggers dispatch
+        _trigger_dispatch(controller)
 
         call_kwargs = controller._async_worker.schedule_transcribe.call_args
         assert call_kwargs[1]["context_prompt"] is None
@@ -1209,16 +1497,15 @@ class TestContextPromptTracking:
         controller._on_dictation_toggle()
         controller._on_engine_ready()
 
-        # First chunk dispatched (non-silent)
-        chunk = _make_audio_chunk(_CLOUD_BUFFER_SAMPLES + 1000)
-        controller._on_audio_chunk(chunk)
+        # First dispatch via speech + silence
+        _trigger_dispatch(controller)
 
         # Deliver first transcription result
         result = _make_transcription_result("Hello world")
         controller._on_transcription_result(result)
 
-        # Second chunk dispatched
-        controller._on_audio_chunk(chunk)
+        # Second dispatch via speech + silence
+        _trigger_dispatch(controller)
 
         # The second schedule_transcribe call should have context_prompt
         assert controller._async_worker.schedule_transcribe.call_count == 2
@@ -1262,13 +1549,13 @@ class TestContextPromptTracking:
 
 
 class TestSilenceDetection:
-    """Tests for cloud API silence detection."""
+    """Tests for speech detection and silence handling."""
 
     @patch("systemstt.controller.MenuBarWidget")
     @patch("systemstt.controller.FloatingPill")
     @patch("systemstt.controller.AudioRecorder")
     @patch("systemstt.controller.EngineManager")
-    def test_silent_chunk_skipped_for_cloud(
+    def test_silence_only_not_dispatched(
         self,
         _mock_em: MagicMock,
         _mock_rec: MagicMock,
@@ -1276,7 +1563,7 @@ class TestSilenceDetection:
         _mock_menu: MagicMock,
         mock_deps: dict[str, Any],
     ) -> None:
-        """Silent audio should not be dispatched to the cloud API."""
+        """Silent-only audio never triggers dispatch (speech_seen stays False)."""
         controller = AppController(**mock_deps)
         controller._async_worker = MagicMock()
         controller._async_worker.schedule_activate_engine = MagicMock()
@@ -1288,18 +1575,18 @@ class TestSilenceDetection:
         controller._on_dictation_toggle()
         controller._on_engine_ready()
 
-        # Send silent audio above threshold size
-        silent_chunk = np.zeros(_CLOUD_BUFFER_SAMPLES + 1000, dtype=np.float32)
-        controller._on_audio_chunk(silent_chunk)
+        # Send multiple silent chunks — speech_seen never becomes True
+        for _ in range(5):
+            controller._on_audio_chunk(_make_silent_chunk())
 
-        # Should NOT dispatch transcription for silent audio
         controller._async_worker.schedule_transcribe.assert_not_called()
+        assert controller._speech_seen is False
 
     @patch("systemstt.controller.MenuBarWidget")
     @patch("systemstt.controller.FloatingPill")
     @patch("systemstt.controller.AudioRecorder")
     @patch("systemstt.controller.EngineManager")
-    def test_non_silent_chunk_dispatched_for_cloud(
+    def test_speech_dispatched_for_cloud(
         self,
         _mock_em: MagicMock,
         _mock_rec: MagicMock,
@@ -1307,7 +1594,7 @@ class TestSilenceDetection:
         _mock_menu: MagicMock,
         mock_deps: dict[str, Any],
     ) -> None:
-        """Non-silent audio should be dispatched to the cloud API."""
+        """Speech followed by silence dispatches to cloud API."""
         controller = AppController(**mock_deps)
         controller._async_worker = MagicMock()
         controller._async_worker.schedule_activate_engine = MagicMock()
@@ -1319,11 +1606,8 @@ class TestSilenceDetection:
         controller._on_dictation_toggle()
         controller._on_engine_ready()
 
-        # Send a loud sine wave above threshold size
-        num_samples = _CLOUD_BUFFER_SAMPLES + 1000
-        t = np.linspace(0, num_samples / 16000, num_samples, endpoint=False, dtype=np.float32)
-        loud_chunk = (0.5 * np.sin(2 * np.pi * 440 * t)).astype(np.float32)
-        controller._on_audio_chunk(loud_chunk)
+        # Speech + silence triggers dispatch
+        _trigger_dispatch(controller)
 
         controller._async_worker.schedule_transcribe.assert_called_once()
 
@@ -1331,7 +1615,7 @@ class TestSilenceDetection:
     @patch("systemstt.controller.FloatingPill")
     @patch("systemstt.controller.AudioRecorder")
     @patch("systemstt.controller.EngineManager")
-    def test_silent_chunk_not_skipped_for_local_whisper(
+    def test_stop_flush_silent_buffer_skipped_for_cloud(
         self,
         _mock_em: MagicMock,
         _mock_rec: MagicMock,
@@ -1339,7 +1623,41 @@ class TestSilenceDetection:
         _mock_menu: MagicMock,
         mock_deps: dict[str, Any],
     ) -> None:
-        """Local Whisper has built-in VAD, so silence should still be dispatched."""
+        """Stop-flush of silent-only buffer is skipped for cloud API."""
+        controller = AppController(**mock_deps)
+        controller._async_worker = MagicMock()
+        controller._async_worker.schedule_activate_engine = MagicMock()
+
+        mock_engine = MagicMock()
+        controller._engine_manager.active_engine = mock_engine
+
+        # Go ACTIVE
+        controller._on_dictation_toggle()
+        controller._on_engine_ready()
+
+        # Buffer only silent audio
+        for _ in range(3):
+            controller._on_audio_chunk(_make_silent_chunk())
+
+        # Stop dictation (flushes buffer via _dispatch_transcription)
+        controller._on_dictation_toggle()
+
+        # Cloud API's _has_speech check filters the silent buffer
+        controller._async_worker.schedule_transcribe.assert_not_called()
+
+    @patch("systemstt.controller.MenuBarWidget")
+    @patch("systemstt.controller.FloatingPill")
+    @patch("systemstt.controller.AudioRecorder")
+    @patch("systemstt.controller.EngineManager")
+    def test_stop_flush_silent_buffer_dispatched_for_local_whisper(
+        self,
+        _mock_em: MagicMock,
+        _mock_rec: MagicMock,
+        _mock_pill: MagicMock,
+        _mock_menu: MagicMock,
+        mock_deps: dict[str, Any],
+    ) -> None:
+        """Stop-flush dispatches silent buffer for local whisper (has own VAD)."""
         mock_deps["settings_store"].load.return_value = SettingsModel(
             engine=ConfigEngineType.LOCAL_WHISPER,
         )
@@ -1354,11 +1672,14 @@ class TestSilenceDetection:
         controller._on_dictation_toggle()
         controller._on_engine_ready()
 
-        # Send silent audio above threshold size
-        silent_chunk = np.zeros(_LOCAL_BUFFER_SAMPLES + 1000, dtype=np.float32)
-        controller._on_audio_chunk(silent_chunk)
+        # Buffer only silent audio
+        for _ in range(3):
+            controller._on_audio_chunk(_make_silent_chunk())
 
-        # Local Whisper should still get the audio (VAD handles it internally)
+        # Stop dictation (flushes buffer via _dispatch_transcription)
+        controller._on_dictation_toggle()
+
+        # Local Whisper gets the audio — its own VAD handles silence
         controller._async_worker.schedule_transcribe.assert_called_once()
 
     def test_has_speech_static_method(self) -> None:

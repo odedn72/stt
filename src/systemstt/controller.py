@@ -63,9 +63,10 @@ from systemstt.ui.menu_bar import MenuBarWidget
 
 logger = logging.getLogger(__name__)
 
-# Audio buffer thresholds (samples at 16 kHz)
-_CLOUD_BUFFER_SAMPLES = 16_000 * 5  # 5 seconds
-_LOCAL_BUFFER_SAMPLES = 16_000 * 5  # 5 seconds
+# Speech-boundary dispatch constants (samples at 16 kHz)
+_SILENCE_CHUNKS_FOR_DISPATCH = 2  # 2 × 500ms = 1.0s silence triggers dispatch
+_MIN_DISPATCH_SAMPLES = 16_000  # 1.0s minimum buffer before dispatch allowed
+_MAX_BUFFER_SAMPLES = 16_000 * 20  # 20s cap for continuous speech (API max is 25s)
 
 # Speech detection: frame-level energy analysis
 _FRAME_DURATION_MS = 20  # 20ms frames for energy analysis
@@ -301,6 +302,8 @@ class AppController(QObject):
         self._current_language: str = "EN"
         self._last_transcription_text: str | None = None
         self._detected_language: DetectedLanguage | None = None
+        self._speech_seen: bool = False
+        self._trailing_silent_chunks: int = 0
 
         # -- Async worker -----------------------------------------------------
         self._async_worker = AsyncWorker(self)
@@ -471,13 +474,6 @@ class AppController(QObject):
     # Properties
     # =====================================================================
 
-    @property
-    def _buffer_threshold(self) -> int:
-        """Audio buffer size (samples) before dispatching transcription."""
-        if self._settings.engine == ConfigEngineType.CLOUD_API:
-            return _CLOUD_BUFFER_SAMPLES
-        return _LOCAL_BUFFER_SAMPLES
-
     # =====================================================================
     # Hotkey (called from the hotkey manager's thread)
     # =====================================================================
@@ -526,6 +522,8 @@ class AppController(QObject):
         self._elapsed_seconds = 0
         self._last_transcription_text = None
         self._detected_language = None
+        self._speech_seen = False
+        self._trailing_silent_chunks = 0
 
         # Convert config EngineType → STT EngineType
         stt_engine_type = STTEngineType(self._settings.engine.value)
@@ -663,8 +661,19 @@ class AppController(QObject):
         self._audio_buffer.append(chunk)
         self._buffered_samples += len(chunk)
 
-        # Dispatch transcription when threshold reached
-        if self._buffered_samples >= self._buffer_threshold:
+        # Track speech boundaries
+        if self._has_speech(chunk):
+            self._speech_seen = True
+            self._trailing_silent_chunks = 0
+        elif self._speech_seen:
+            self._trailing_silent_chunks += 1
+
+        # Dispatch on natural pause or max cap
+        if (
+            self._speech_seen
+            and self._trailing_silent_chunks >= _SILENCE_CHUNKS_FOR_DISPATCH
+            and self._buffered_samples >= _MIN_DISPATCH_SAMPLES
+        ) or self._buffered_samples >= _MAX_BUFFER_SAMPLES:
             self._dispatch_transcription()
 
     @staticmethod
@@ -713,9 +722,18 @@ class AppController(QObject):
         ):
             return
 
+        # Trim trailing silent chunks to avoid hallucinations
+        if (
+            self._trailing_silent_chunks > 0
+            and len(self._audio_buffer) > self._trailing_silent_chunks
+        ):
+            self._audio_buffer = self._audio_buffer[: -self._trailing_silent_chunks]
+
         audio = np.concatenate(self._audio_buffer)
         self._audio_buffer.clear()
         self._buffered_samples = 0
+        self._speech_seen = False
+        self._trailing_silent_chunks = 0
 
         rms = float(np.sqrt(np.mean(audio**2)))
         logger.info("Dispatch: %.2fs audio, RMS=%.6f", len(audio) / 16_000, rms)
