@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QPushButton,
     QRadioButton,
+    QScrollArea,
     QVBoxLayout,
     QWidget,
 )
@@ -72,11 +73,23 @@ class EngineTab(QWidget):
         self._apply_initial_state()
 
     def _setup_ui(self) -> None:
-        layout = QVBoxLayout(self)
+        outer_layout = QVBoxLayout(self)
+        outer_layout.setContentsMargins(0, 0, 0, 0)
+        outer_layout.setSpacing(0)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        scroll.setStyleSheet(
+            f"QScrollArea {{ background-color: {TOKENS.bg_elevated}; border: none; }}"
+        )
+
+        content = QWidget()
+        layout = QVBoxLayout(content)
         layout.setContentsMargins(16, 0, 16, 16)
         layout.setSpacing(0)
 
-        self.setStyleSheet(f"background-color: {TOKENS.bg_elevated};")
+        content.setStyleSheet(f"background-color: {TOKENS.bg_elevated};")
 
         # --- STT ENGINE section ---
         layout.addWidget(SectionHeader("STT Engine", is_first=True))
@@ -175,6 +188,9 @@ class EngineTab(QWidget):
         layout.addWidget(self._local_section)
 
         layout.addStretch()
+
+        scroll.setWidget(content)
+        outer_layout.addWidget(scroll)
 
     def _apply_initial_state(self) -> None:
         """Set initial control values without emitting signals."""

@@ -409,6 +409,15 @@ class AppController(QObject):
         self._async_worker.start()
         self._async_worker.wait_until_running()
 
+        # Check accessibility permission — required for text injection and hotkeys
+        if not self._text_injector.has_accessibility_permission():
+            logger.warning(
+                "Accessibility permission not granted. "
+                "Text injection and global hotkey will not work. "
+                "Grant permission in System Settings > Privacy & Security > Accessibility."
+            )
+            self._text_injector.request_accessibility_permission()
+
         # Register global hotkey
         binding = self._build_hotkey_binding()
         try:
@@ -469,6 +478,14 @@ class AppController(QObject):
 
     def _start_dictation(self) -> None:
         """Begin dictation: transition to STARTING, activate STT engine."""
+        # Warn if accessibility permission is missing — text injection won't work
+        if not self._text_injector.has_accessibility_permission():
+            logger.warning("Dictation started without accessibility permission")
+            self._floating_pill.show_error(
+                "Accessibility permission required. Check System Settings.",
+                is_warning=True,
+            )
+
         self._state_machine.transition_to(DictationState.STARTING, "user_toggle")
 
         # Reset buffers
@@ -617,6 +634,16 @@ class AppController(QObject):
     def _dispatch_transcription(self) -> None:
         """Concatenate buffered audio and dispatch for transcription."""
         if not self._audio_buffer:
+            return
+
+        # Local Whisper is not safe for concurrent transcriptions (state
+        # machine goes READY→TRANSCRIBING).  Keep buffering until the
+        # in-flight transcription finishes; the next audio chunk or the
+        # stop-flush will pick up the accumulated audio.
+        if (
+            self._settings.engine == ConfigEngineType.LOCAL_WHISPER
+            and self._pending_transcriptions > 0
+        ):
             return
 
         audio = np.concatenate(self._audio_buffer)

@@ -126,12 +126,13 @@ class TestMacOSTextInjectorInjectText:
                     await injector.inject_text("")  # Should not raise
 
     @pytest.mark.asyncio
+    @patch("systemstt.platform.macos.text_injector.AXIsProcessTrusted", return_value=True)
     @patch("systemstt.platform.macos.text_injector.CGEventPost", side_effect=Exception("CGEvent failed"))
     @patch("systemstt.platform.macos.text_injector.CGEventCreateKeyboardEvent")
     @patch("systemstt.platform.macos.text_injector.CGEventKeyboardSetUnicodeString")
     async def test_inject_text_failure_raises_injection_failed_error(
         self, mock_set_unicode: MagicMock, mock_create_event: MagicMock,
-        mock_post: MagicMock
+        mock_post: MagicMock, mock_ax_trusted: MagicMock,
     ) -> None:
         injector = MacOSTextInjector()
         with pytest.raises(InjectionFailedError):

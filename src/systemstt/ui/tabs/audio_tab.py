@@ -12,7 +12,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QComboBox, QLabel, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QComboBox, QLabel, QScrollArea, QVBoxLayout, QWidget
 
 from systemstt.ui.theme import TOKENS
 from systemstt.ui.widgets import LevelMeter, SectionHeader, SettingRow
@@ -52,11 +52,23 @@ class AudioTab(QWidget):
         self._setup_ui()
 
     def _setup_ui(self) -> None:
-        layout = QVBoxLayout(self)
+        outer_layout = QVBoxLayout(self)
+        outer_layout.setContentsMargins(0, 0, 0, 0)
+        outer_layout.setSpacing(0)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        scroll.setStyleSheet(
+            f"QScrollArea {{ background-color: {TOKENS.bg_elevated}; border: none; }}"
+        )
+
+        content = QWidget()
+        layout = QVBoxLayout(content)
         layout.setContentsMargins(16, 0, 16, 16)
         layout.setSpacing(0)
 
-        self.setStyleSheet(f"background-color: {TOKENS.bg_elevated};")
+        content.setStyleSheet(f"background-color: {TOKENS.bg_elevated};")
 
         # --- INPUT section ---
         layout.addWidget(SectionHeader("Input", is_first=True))
@@ -76,6 +88,9 @@ class AudioTab(QWidget):
         layout.addWidget(helper)
 
         layout.addStretch()
+
+        scroll.setWidget(content)
+        outer_layout.addWidget(scroll)
 
     # --- Signal handlers ---
 

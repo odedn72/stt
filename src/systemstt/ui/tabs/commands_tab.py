@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QLabel,
+    QScrollArea,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -58,11 +59,23 @@ class CommandsTab(QWidget):
         self._apply_initial_state()
 
     def _setup_ui(self) -> None:
-        layout = QVBoxLayout(self)
+        outer_layout = QVBoxLayout(self)
+        outer_layout.setContentsMargins(0, 0, 0, 0)
+        outer_layout.setSpacing(0)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        scroll.setStyleSheet(
+            f"QScrollArea {{ background-color: {TOKENS.bg_elevated}; border: none; }}"
+        )
+
+        content = QWidget()
+        layout = QVBoxLayout(content)
         layout.setContentsMargins(16, 0, 16, 16)
         layout.setSpacing(0)
 
-        self.setStyleSheet(f"background-color: {TOKENS.bg_elevated};")
+        content.setStyleSheet(f"background-color: {TOKENS.bg_elevated};")
 
         # --- VOICE COMMANDS section ---
         layout.addWidget(SectionHeader("Voice Commands", is_first=True))
@@ -104,6 +117,9 @@ class CommandsTab(QWidget):
         layout.addWidget(note)
 
         layout.addStretch()
+
+        scroll.setWidget(content)
+        outer_layout.addWidget(scroll)
 
     def _apply_initial_state(self) -> None:
         """Set initial toggle state without emitting signals."""

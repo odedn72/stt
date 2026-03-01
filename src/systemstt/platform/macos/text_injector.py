@@ -17,6 +17,8 @@ from systemstt.platform.base import KeyModifier, SpecialKey, TextInjector
 logger = logging.getLogger(__name__)
 
 # Import macOS APIs - these are mocked in tests
+# Quartz and ApplicationServices are imported separately so that a missing
+# ApplicationServices package doesn't prevent the CGEvent functions from loading.
 try:
     from Quartz import (  # type: ignore[import-untyped]
         CGEventPost,
@@ -31,18 +33,12 @@ try:
         kCGEventFlagMaskShift,
         kCGEventFlagMaskControl,
     )
-    from ApplicationServices import (  # type: ignore[import-untyped]
-        AXIsProcessTrusted,
-        AXIsProcessTrustedWithOptions,
-    )
 except ImportError:
     # Allow importing on non-macOS for testing with mocks
     CGEventPost = None  # type: ignore[assignment]
     CGEventCreateKeyboardEvent = None  # type: ignore[assignment]
     CGEventKeyboardSetUnicodeString = None  # type: ignore[assignment]
     CGEventSetFlags = None  # type: ignore[assignment]
-    AXIsProcessTrusted = None  # type: ignore[assignment]
-    AXIsProcessTrustedWithOptions = None  # type: ignore[assignment]
     kCGHIDEventTap = 0
     kCGEventKeyDown = 10
     kCGEventKeyUp = 11
@@ -50,6 +46,15 @@ except ImportError:
     kCGEventFlagMaskAlternate = 1 << 19
     kCGEventFlagMaskShift = 1 << 17
     kCGEventFlagMaskControl = 1 << 18
+
+try:
+    from ApplicationServices import (  # type: ignore[import-untyped]
+        AXIsProcessTrusted,
+        AXIsProcessTrustedWithOptions,
+    )
+except ImportError:
+    AXIsProcessTrusted = None  # type: ignore[assignment]
+    AXIsProcessTrustedWithOptions = None  # type: ignore[assignment]
 
 # Virtual key codes for special keys
 _SPECIAL_KEY_CODES: dict[str, int] = {
