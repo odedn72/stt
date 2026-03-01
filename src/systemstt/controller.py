@@ -664,15 +664,7 @@ class AppController(QObject):
         self._buffered_samples += len(chunk)
 
         # Track speech boundaries
-        chunk_rms = float(np.sqrt(np.mean(chunk**2)))
         chunk_has_speech = self._has_speech(chunk)
-        logger.debug(
-            "Chunk: RMS=%.4f, speech=%s, seen=%s, trailing=%d",
-            chunk_rms,
-            chunk_has_speech,
-            self._speech_seen,
-            self._trailing_silent_chunks,
-        )
         if chunk_has_speech:
             if not self._speech_seen:
                 self._speech_start_samples = self._buffered_samples - len(chunk)
@@ -806,10 +798,9 @@ class AppController(QObject):
             return
 
         logger.info(
-            "Transcription result: lang=%s, len=%d, text='%s'",
+            "Transcription result: lang=%s, text='%s'",
             result.primary_language.value,
-            len(result.full_text),
-            result.full_text[:300],
+            result.full_text[:100],
         )
 
         text = filter_hallucinations(result.full_text)
@@ -859,7 +850,6 @@ class AppController(QObject):
             )
         else:
             # Plain text — inject it
-            logger.info("Injecting text: len=%d, text='%s'", len(text), text[:300])
             self._async_worker.schedule_inject_text(self._text_injector, text)
 
         self._maybe_finish_stop()
