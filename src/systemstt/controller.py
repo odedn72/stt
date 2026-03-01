@@ -64,7 +64,7 @@ from systemstt.ui.menu_bar import MenuBarWidget
 logger = logging.getLogger(__name__)
 
 # Speech-boundary dispatch constants (samples at 16 kHz)
-_SILENCE_CHUNKS_FOR_DISPATCH = 2  # 2 × 500ms = 1.0s silence triggers dispatch
+_SILENCE_CHUNKS_FOR_DISPATCH = 3  # 3 × 500ms = 1.5s silence triggers dispatch
 _MIN_DISPATCH_SAMPLES = 16_000  # 1.0s minimum buffer before dispatch allowed
 _MAX_BUFFER_SAMPLES = 16_000 * 20  # 20s cap for continuous speech (API max is 25s)
 

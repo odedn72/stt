@@ -76,12 +76,12 @@ def _trigger_dispatch(controller: AppController) -> None:
     """Send speech + silence pattern to trigger speech-boundary dispatch.
 
     Sends 2 speech chunks (16000 samples >= _MIN_DISPATCH_SAMPLES) followed
-    by 2 silent chunks (_SILENCE_CHUNKS_FOR_DISPATCH) to trigger a dispatch.
+    by _SILENCE_CHUNKS_FOR_DISPATCH silent chunks to trigger a dispatch.
     """
     controller._on_audio_chunk(_make_audio_chunk())
     controller._on_audio_chunk(_make_audio_chunk())
-    controller._on_audio_chunk(_make_silent_chunk())
-    controller._on_audio_chunk(_make_silent_chunk())
+    for _ in range(_SILENCE_CHUNKS_FOR_DISPATCH):
+        controller._on_audio_chunk(_make_silent_chunk())
 
 
 def _make_transcription_result(
@@ -936,14 +936,14 @@ class TestSpeechBoundaryDispatch:
         controller._on_dictation_toggle()
         controller._on_engine_ready()
 
-        # Use small chunks so total (speech + 2*silence) < _MIN_DISPATCH_SAMPLES
+        # Use small chunks so total < _MIN_DISPATCH_SAMPLES
         small_speech = _make_audio_chunk(2000)
         small_silent = _make_silent_chunk(2000)
 
-        # 2000 speech + 2×2000 silence = 6000 < 16000 min
+        # 2000 speech + 3×2000 silence = 8000 < 16000 min
         controller._on_audio_chunk(small_speech)
-        controller._on_audio_chunk(small_silent)
-        controller._on_audio_chunk(small_silent)
+        for _ in range(_SILENCE_CHUNKS_FOR_DISPATCH):
+            controller._on_audio_chunk(small_silent)
 
         # Silence threshold met but buffer too small — no dispatch
         controller._async_worker.schedule_transcribe.assert_not_called()
