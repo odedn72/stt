@@ -1,30 +1,54 @@
 """
-MacOSHotkeyManager — macOS global hotkey using Carbon RegisterEventHotKey.
+MacOSHotkeyManager — macOS global hotkey using CGEventTap.
 
-Uses Carbon event APIs via PyObjC to register system-wide hotkeys.
-Carbon hotkey APIs are deprecated but remain the most reliable method
-for global hotkeys on macOS from Python.
+Uses a CGEventTap (from Quartz/CoreGraphics) to listen for keyboard
+events at the session level and filter for the registered hotkey
+combination.  The tap runs on a background thread with its own
+CFRunLoop so the main (Qt) thread is never blocked.
+
+Requires Accessibility (or Input Monitoring) permission.
 """
 
 from __future__ import annotations
 
-import ctypes
 import logging
-from typing import Callable, Optional
+import threading
+from typing import TYPE_CHECKING
 
 from systemstt.errors import HotkeyRegistrationError
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 from systemstt.platform.base import HotkeyBinding, HotkeyManager
 
 logger = logging.getLogger(__name__)
 
-# Import Carbon APIs - these are mocked in tests
+# Import Quartz APIs — these are mocked in tests
 try:
-    from Carbon import CarbonEvt  # type: ignore[import-untyped]
-except ImportError:
-    # Allow importing on non-macOS for testing with mocks
-    CarbonEvt = None  # type: ignore[assignment]
+    from Quartz import (  # type: ignore[import-untyped]
+        CFMachPortCreateRunLoopSource,
+        CFMachPortInvalidate,
+        CFRunLoopAddSource,
+        CFRunLoopGetCurrent,
+        CFRunLoopRun,
+        CFRunLoopStop,
+        CGEventGetFlags,
+        CGEventGetIntegerValueField,
+        CGEventMaskBit,
+        CGEventTapCreate,
+        CGEventTapEnable,
+        kCFRunLoopCommonModes,
+        kCGEventKeyDown,
+        kCGHeadInsertEventTap,
+        kCGKeyboardEventKeycode,
+        kCGSessionEventTap,
+    )
 
-# Virtual key code mapping for Carbon hotkeys
+    _QUARTZ_AVAILABLE = True
+except ImportError:
+    _QUARTZ_AVAILABLE = False
+
+# Virtual key code mapping (same codes used by both Carbon and CGEvent)
 _KEY_CODES: dict[str, int] = {
     "space": 49,
     "a": 0, "b": 11, "c": 8, "d": 2, "e": 14,
@@ -42,56 +66,63 @@ _KEY_CODES: dict[str, int] = {
     "backspace": 51, "delete": 117,
 }
 
-# Carbon modifier flag mapping
+# CGEvent modifier flag mapping
 _MODIFIER_FLAGS: dict[str, int] = {
-    "command": 0x0100,   # cmdKey
-    "option": 0x0800,    # optionKey
-    "shift": 0x0200,     # shiftKey
-    "control": 0x1000,   # controlKey
+    "command": 0x10_0000,   # kCGEventFlagMaskCommand
+    "option": 0x8_0000,     # kCGEventFlagMaskAlternate
+    "shift": 0x2_0000,      # kCGEventFlagMaskShift
+    "control": 0x4_0000,    # kCGEventFlagMaskControl
 }
 
-# Carbon event constants
-_HOTKEY_SIGNATURE = b"SSTT"  # 4-char code for our app
-_HOTKEY_ID = 1
+# Mask of all modifier bits we care about (ignore caps lock, fn, etc.)
+_ALL_MODIFIER_MASK = (
+    _MODIFIER_FLAGS["command"]
+    | _MODIFIER_FLAGS["option"]
+    | _MODIFIER_FLAGS["shift"]
+    | _MODIFIER_FLAGS["control"]
+)
 
-# Carbon event class and kind for hotkey events
-_K_EVENT_CLASS_KEYBOARD = int.from_bytes(b"kbrd", byteorder="big")
-_K_EVENT_HOT_KEY_PRESSED = 5
+# Use listen-only so we observe but don't block events
+_TAP_OPTION_LISTEN_ONLY = 0x00000001  # kCGEventTapOptionListenOnly
 
 
 class MacOSHotkeyManager(HotkeyManager):
-    """macOS implementation of HotkeyManager using Carbon RegisterEventHotKey."""
+    """macOS implementation of HotkeyManager using a CGEventTap."""
 
     def __init__(self) -> None:
-        self._binding: Optional[HotkeyBinding] = None
-        self._callback: Optional[Callable[[], None]] = None
-        self._hotkey_ref: object = None
-        self._handler_ref: object = None
+        self._binding: HotkeyBinding | None = None
+        self._callback: Callable[[], None] | None = None
+        self._target_key_code: int = 0
+        self._target_modifier_mask: int = 0
+
+        # CGEventTap resources (managed on the background thread)
+        self._tap_ref: object = None
+        self._run_loop_ref: object = None
+        self._thread: threading.Thread | None = None
+        self._thread_ready = threading.Event()
+
+    # -----------------------------------------------------------------
+    # Public API
+    # -----------------------------------------------------------------
 
     def register(self, binding: HotkeyBinding, callback: Callable[[], None]) -> None:
-        """Register a global hotkey with the given binding and callback.
+        """Register a global hotkey.
 
-        Raises:
-            HotkeyRegistrationError: If the hotkey cannot be registered.
+        Raises HotkeyRegistrationError if the event tap cannot be created
+        (typically because Accessibility permission is not granted).
         """
         try:
-            # Unregister existing hotkey if any
-            if self._hotkey_ref is not None:
-                self._unregister_carbon_hotkey()
+            # Tear down previous tap if any
+            self._stop_tap()
 
-            # Map binding to Carbon key code and modifiers
-            key_code = _KEY_CODES.get(binding.key.lower(), 0)
-            modifier_mask = 0
-            for mod in binding.modifiers:
-                modifier_mask |= _MODIFIER_FLAGS.get(mod, 0)
-
-            # Store callback
             self._callback = callback
+            self._target_key_code = _KEY_CODES.get(binding.key.lower(), 0)
+            self._target_modifier_mask = 0
+            for mod in binding.modifiers:
+                self._target_modifier_mask |= _MODIFIER_FLAGS.get(mod, 0)
 
-            # Register the Carbon hotkey
-            self._register_carbon_hotkey(key_code, modifier_mask)
+            self._start_tap()
             self._binding = binding
-
             logger.info("Registered hotkey: %s", binding.display_string())
 
         except HotkeyRegistrationError:
@@ -102,124 +133,152 @@ class MacOSHotkeyManager(HotkeyManager):
             ) from exc
 
     def unregister(self) -> None:
-        """Unregister the current hotkey. Safe to call when no hotkey is registered."""
-        if self._hotkey_ref is not None:
-            try:
-                self._unregister_carbon_hotkey()
-            except Exception:
-                logger.warning("Error unregistering hotkey", exc_info=True)
+        """Unregister the current hotkey. Safe to call when not registered."""
+        self._stop_tap()
         self._binding = None
         self._callback = None
-        self._hotkey_ref = None
-        self._handler_ref = None
 
     def update_binding(self, binding: HotkeyBinding) -> None:
-        """Change the hotkey binding. Must be registered first.
-
-        Raises:
-            HotkeyRegistrationError: If the new binding cannot be registered.
-        """
+        """Change the hotkey binding. Must be registered first."""
         if self._callback is None:
             raise HotkeyRegistrationError(
                 "Cannot update binding: no hotkey is currently registered."
             )
 
         old_binding = self._binding
-        old_hotkey_ref = self._hotkey_ref
-        old_handler_ref = self._handler_ref
+        saved_callback = self._callback
 
         try:
-            # Unregister old hotkey
-            if self._hotkey_ref is not None:
-                self._unregister_carbon_hotkey()
+            self._stop_tap()
 
-            # Register new hotkey
-            key_code = _KEY_CODES.get(binding.key.lower(), 0)
-            modifier_mask = 0
+            self._callback = saved_callback
+            self._target_key_code = _KEY_CODES.get(binding.key.lower(), 0)
+            self._target_modifier_mask = 0
             for mod in binding.modifiers:
-                modifier_mask |= _MODIFIER_FLAGS.get(mod, 0)
+                self._target_modifier_mask |= _MODIFIER_FLAGS.get(mod, 0)
 
-            self._register_carbon_hotkey(key_code, modifier_mask)
+            self._start_tap()
             self._binding = binding
-
             logger.info("Updated hotkey to: %s", binding.display_string())
 
         except Exception as exc:
-            # Attempt to restore previous binding
             self._binding = old_binding
-            self._hotkey_ref = old_hotkey_ref
-            self._handler_ref = old_handler_ref
             raise HotkeyRegistrationError(
                 f"Failed to update hotkey to {binding.display_string()}: {exc}"
             ) from exc
 
     @property
     def is_registered(self) -> bool:
-        """Return True if a hotkey is currently registered."""
         return self._binding is not None
 
     @property
     def current_binding(self) -> HotkeyBinding | None:
-        """Return the current hotkey binding, or None if not registered."""
         return self._binding
 
-    def _register_carbon_hotkey(self, key_code: int, modifier_mask: int) -> None:
-        """Register the hotkey and install a Carbon event handler.
+    # -----------------------------------------------------------------
+    # CGEventTap internals
+    # -----------------------------------------------------------------
 
-        Installs a Carbon event handler for kEventHotKeyPressed that
-        dispatches to _on_hotkey_pressed when the registered hotkey is
-        pressed. Stores both the hotkey ref and handler ref for cleanup.
-        """
-        # Install the Carbon event handler for hotkey events if not already installed
-        if self._handler_ref is None:
-            event_type_spec = (
-                _K_EVENT_CLASS_KEYBOARD,
-                _K_EVENT_HOT_KEY_PRESSED,
-            )
-            handler_ref = CarbonEvt.InstallApplicationEventHandler(
-                self._carbon_event_callback,
-                [event_type_spec],
-            )
-            self._handler_ref = handler_ref
+    def _start_tap(self) -> None:
+        """Create the CGEventTap and start the background CFRunLoop thread."""
+        if not _QUARTZ_AVAILABLE:
+            raise HotkeyRegistrationError("Quartz framework not available")
 
-        # Register the hotkey itself
-        hotkey_ref = CarbonEvt.RegisterEventHotKey(
-            key_code,
-            modifier_mask,
-            (_HOTKEY_SIGNATURE, _HOTKEY_ID),
-            CarbonEvt.GetApplicationEventTarget(),
-            0,
+        # Create the event tap (listen-only for key-down events)
+        mask = CGEventMaskBit(kCGEventKeyDown)
+        tap = CGEventTapCreate(
+            kCGSessionEventTap,
+            kCGHeadInsertEventTap,
+            _TAP_OPTION_LISTEN_ONLY,
+            mask,
+            self._tap_callback,
+            None,
         )
-        self._hotkey_ref = hotkey_ref
+        if tap is None:
+            raise HotkeyRegistrationError(
+                "Failed to create CGEventTap. "
+                "Grant Accessibility permission in System Settings > "
+                "Privacy & Security > Accessibility."
+            )
 
-    def _carbon_event_callback(
+        self._tap_ref = tap
+        CGEventTapEnable(tap, True)
+
+        # Start background thread to run the CFRunLoop
+        self._thread_ready.clear()
+        self._thread = threading.Thread(
+            target=self._run_loop_thread,
+            args=(tap,),
+            daemon=True,
+            name="hotkey-cgeventtap",
+        )
+        self._thread.start()
+        self._thread_ready.wait(timeout=2.0)
+
+    def _stop_tap(self) -> None:
+        """Tear down the event tap and stop the background thread."""
+        if self._tap_ref is not None:
+            try:
+                CGEventTapEnable(self._tap_ref, False)
+                CFMachPortInvalidate(self._tap_ref)
+            except Exception:
+                logger.debug("Error disabling event tap", exc_info=True)
+            self._tap_ref = None
+
+        if self._run_loop_ref is not None:
+            try:
+                CFRunLoopStop(self._run_loop_ref)
+            except Exception:
+                logger.debug("Error stopping run loop", exc_info=True)
+            self._run_loop_ref = None
+
+        if self._thread is not None:
+            self._thread.join(timeout=2.0)
+            self._thread = None
+
+    def _run_loop_thread(self, tap: object) -> None:
+        """Background thread: adds the tap source to a CFRunLoop and runs it."""
+        try:
+            source = CFMachPortCreateRunLoopSource(None, tap, 0)
+            loop = CFRunLoopGetCurrent()
+            CFRunLoopAddSource(loop, source, kCFRunLoopCommonModes)
+
+            self._run_loop_ref = loop
+            self._thread_ready.set()
+
+            CFRunLoopRun()  # blocks until CFRunLoopStop is called
+        except Exception:
+            logger.error("CGEventTap run-loop thread error", exc_info=True)
+        finally:
+            self._thread_ready.set()  # unblock if we failed early
+
+    def _tap_callback(
         self,
-        next_handler: object,
+        proxy: object,
+        event_type: int,
         event: object,
-        user_data: object,
-    ) -> int:
-        """Carbon event handler callback for hotkey events.
+        refcon: object,
+    ) -> object:
+        """CGEventTap callback — called for every key-down event.
 
-        Called by the Carbon event system when a registered hotkey is pressed.
-        Dispatches to _on_hotkey_pressed.
+        Compares the event's key code and modifier flags against the
+        registered binding. If they match, invokes the hotkey callback.
 
-        Returns 0 (noErr) to indicate the event was handled.
+        Must return the event (or None to suppress, but we're listen-only).
         """
-        self._on_hotkey_pressed()
-        return 0  # noErr
+        try:
+            key_code = CGEventGetIntegerValueField(event, kCGKeyboardEventKeycode)
+            flags = CGEventGetFlags(event) & _ALL_MODIFIER_MASK
 
-    def _unregister_carbon_hotkey(self) -> None:
-        """Unregister the current Carbon hotkey and remove the event handler."""
-        if self._hotkey_ref is not None:
-            CarbonEvt.UnregisterEventHotKey(self._hotkey_ref)
-            self._hotkey_ref = None
+            if key_code == self._target_key_code and flags == self._target_modifier_mask:
+                self._on_hotkey_pressed()
+        except Exception:
+            logger.error("Error in hotkey tap callback", exc_info=True)
 
-        if self._handler_ref is not None:
-            CarbonEvt.RemoveEventHandler(self._handler_ref)
-            self._handler_ref = None
+        return event
 
     def _on_hotkey_pressed(self) -> None:
-        """Called when the registered hotkey is pressed."""
+        """Dispatch the hotkey callback."""
         if self._callback is not None:
             try:
                 self._callback()

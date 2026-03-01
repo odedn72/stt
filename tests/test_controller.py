@@ -1012,7 +1012,7 @@ class TestQuitAndShutdown:
             mock_app = MagicMock()
             mock_instance.return_value = mock_app
             controller._on_quit_requested()
-            mock_app.quit.assert_called_once()
+            mock_app.exit.assert_called_once_with(0)
 
 
 class TestBufferThreshold:

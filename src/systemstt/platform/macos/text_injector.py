@@ -9,7 +9,10 @@ keystroke simulation with modifier keys.
 from __future__ import annotations
 
 import logging
-from typing import Sequence
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 from systemstt.errors import AccessibilityPermissionError, InjectionFailedError
 from systemstt.platform.base import KeyModifier, SpecialKey, TextInjector
@@ -21,17 +24,17 @@ logger = logging.getLogger(__name__)
 # ApplicationServices package doesn't prevent the CGEvent functions from loading.
 try:
     from Quartz import (  # type: ignore[import-untyped]
-        CGEventPost,
         CGEventCreateKeyboardEvent,
         CGEventKeyboardSetUnicodeString,
+        CGEventPost,
         CGEventSetFlags,
-        kCGHIDEventTap,
+        kCGEventFlagMaskAlternate,
+        kCGEventFlagMaskCommand,
+        kCGEventFlagMaskControl,
+        kCGEventFlagMaskShift,
         kCGEventKeyDown,
         kCGEventKeyUp,
-        kCGEventFlagMaskCommand,
-        kCGEventFlagMaskAlternate,
-        kCGEventFlagMaskShift,
-        kCGEventFlagMaskControl,
+        kCGHIDEventTap,
     )
 except ImportError:
     # Allow importing on non-macOS for testing with mocks
@@ -39,13 +42,13 @@ except ImportError:
     CGEventCreateKeyboardEvent = None  # type: ignore[assignment]
     CGEventKeyboardSetUnicodeString = None  # type: ignore[assignment]
     CGEventSetFlags = None  # type: ignore[assignment]
-    kCGHIDEventTap = 0
-    kCGEventKeyDown = 10
-    kCGEventKeyUp = 11
-    kCGEventFlagMaskCommand = 1 << 20
-    kCGEventFlagMaskAlternate = 1 << 19
-    kCGEventFlagMaskShift = 1 << 17
-    kCGEventFlagMaskControl = 1 << 18
+    kCGHIDEventTap = 0  # noqa: N816
+    kCGEventKeyDown = 10  # noqa: N816
+    kCGEventKeyUp = 11  # noqa: N816
+    kCGEventFlagMaskCommand = 1 << 20  # noqa: N816
+    kCGEventFlagMaskAlternate = 1 << 19  # noqa: N816
+    kCGEventFlagMaskShift = 1 << 17  # noqa: N816
+    kCGEventFlagMaskControl = 1 << 18  # noqa: N816
 
 try:
     from ApplicationServices import (  # type: ignore[import-untyped]

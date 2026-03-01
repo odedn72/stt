@@ -20,16 +20,16 @@ try:
     from Security import (  # type: ignore[import-untyped]
         SecItemAdd,
         SecItemCopyMatching,
-        SecItemUpdate,
         SecItemDelete,
+        SecItemUpdate,
+        kSecAttrAccount,
+        kSecAttrService,
         kSecClass,
         kSecClassGenericPassword,
-        kSecAttrService,
-        kSecAttrAccount,
-        kSecValueData,
-        kSecReturnData,
         kSecMatchLimit,
         kSecMatchLimitOne,
+        kSecReturnData,
+        kSecValueData,
     )
 except ImportError:
     # Allow importing on non-macOS for testing with mocks

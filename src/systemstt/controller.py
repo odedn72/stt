@@ -820,10 +820,16 @@ class AppController(QObject):
         self._settings_window.raise_()
 
     def _on_quit_requested(self) -> None:
-        """Quit the application."""
+        """Quit the application.
+
+        Runs shutdown tasks directly rather than relying on ``aboutToQuit``,
+        which may not fire reliably when ``setQuitOnLastWindowClosed(False)``
+        is set and background QThreads are active.
+        """
+        self._shutdown_manager.shutdown()
         app = QApplication.instance()
         if app is not None:
-            app.quit()
+            app.exit(0)
 
     def _on_preview_toggle(self) -> None:
         """Toggle the live-preview setting."""

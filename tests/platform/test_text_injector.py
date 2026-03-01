@@ -14,14 +14,13 @@ Tests verify:
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from systemstt.platform.base import TextInjector, KeyModifier, SpecialKey
-from systemstt.platform.macos.text_injector import MacOSTextInjector
 from systemstt.errors import AccessibilityPermissionError, InjectionFailedError
-
+from systemstt.platform.base import KeyModifier, SpecialKey, TextInjector
+from systemstt.platform.macos.text_injector import MacOSTextInjector
 
 # ---------------------------------------------------------------------------
 # TextInjector ABC tests
@@ -118,16 +117,21 @@ class TestMacOSTextInjectorInjectText:
         assert mock_post.called
 
     @pytest.mark.asyncio
-    async def test_inject_empty_string_no_error(self) -> None:
-        with patch("systemstt.platform.macos.text_injector.CGEventPost"):
-            with patch("systemstt.platform.macos.text_injector.CGEventCreateKeyboardEvent"):
-                with patch("systemstt.platform.macos.text_injector.CGEventKeyboardSetUnicodeString"):
-                    injector = MacOSTextInjector()
-                    await injector.inject_text("")  # Should not raise
+    @patch("systemstt.platform.macos.text_injector.CGEventKeyboardSetUnicodeString")
+    @patch("systemstt.platform.macos.text_injector.CGEventCreateKeyboardEvent")
+    @patch("systemstt.platform.macos.text_injector.CGEventPost")
+    async def test_inject_empty_string_no_error(
+        self, _post: MagicMock, _create: MagicMock, _unicode: MagicMock,
+    ) -> None:
+        injector = MacOSTextInjector()
+        await injector.inject_text("")  # Should not raise
 
     @pytest.mark.asyncio
     @patch("systemstt.platform.macos.text_injector.AXIsProcessTrusted", return_value=True)
-    @patch("systemstt.platform.macos.text_injector.CGEventPost", side_effect=Exception("CGEvent failed"))
+    @patch(
+        "systemstt.platform.macos.text_injector.CGEventPost",
+        side_effect=Exception("CGEvent failed"),
+    )
     @patch("systemstt.platform.macos.text_injector.CGEventCreateKeyboardEvent")
     @patch("systemstt.platform.macos.text_injector.CGEventKeyboardSetUnicodeString")
     async def test_inject_text_failure_raises_injection_failed_error(
